@@ -1,0 +1,123 @@
+# Phase 0 corpus manifest.
+#
+# Every repo pins a commit sha -- re-extraction must be reproducible, and
+# "current main" is a moving target that would silently invalidate every
+# cached graph in corpus/graphs/. Re-pin deliberately, not by accident.
+#
+# stage:   which build-order stage (see the Phase 0 plan) first analyzes
+#          this repo. Omitted for disabled entries.
+# roots:   source directories analyzed, relative to the repo root (or to
+#          `local_path` for repos that are not cloned). Verified against
+#          each repo's actual layout at the pinned commit via the GitHub
+#          contents API, not guessed -- several differ from what plan.md
+#          assumed (requests and date-fns have both moved to different
+#          layouts since the corpus was chosen).
+# enabled: false entries are skipped by corpus/sync.py and the extractors;
+#          `note` records why.
+# exactly one of `url` / `local_path` must be set per entry.
+
+[[repo]]
+name = "flask"
+lang = "py"
+stage = 1
+enabled = true
+url = "https://github.com/pallets/flask.git"
+commit = "6a2f545bfd8ed31e19066a299296917e034aca58"
+roots = ["src/flask"]
+
+[[repo]]
+name = "requests"
+lang = "py"
+stage = 1
+enabled = true
+url = "https://github.com/psf/requests.git"
+commit = "414f0513c33883adf6f2b46901d4f0b38a455851"
+roots = ["src/requests"]
+
+[[repo]]
+name = "rich"
+lang = "py"
+stage = 1
+enabled = true
+url = "https://github.com/Textualize/rich.git"
+commit = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+roots = ["rich"]
+
+[[repo]]
+name = "meridian2"
+lang = "ts"
+stage = 1
+enabled = true
+# Not cloned -- this is the user's live development checkout. sync.py only
+# verifies it is at the pinned commit and warns (does not fail) if not.
+local_path = "C:/Users/johan/code/meridian2"
+commit = "469126e4c51086bd07241782a2f325f78add25a8"
+roots = ["src", "worker/src"]
+
+[[repo]]
+name = "zod"
+lang = "ts"
+stage = 2
+enabled = true
+url = "https://github.com/colinhacks/zod.git"
+commit = "912f0f51b0ced654d0069741e7160834dca742ee"
+roots = ["packages/zod/src"]
+
+[[repo]]
+name = "date-fns"
+lang = "ts"
+stage = 2
+enabled = true
+url = "https://github.com/date-fns/date-fns.git"
+commit = "4098115cf705e3af7f663d8e5b0686e39a9f478a"
+# date-fns became a pnpm monorepo since plan.md was written; pkgs/core is the
+# main published package (pkgs/tz and pkgs/utc are newer, smaller siblings).
+roots = ["pkgs/core/src"]
+
+[[repo]]
+name = "vite"
+lang = "ts"
+stage = 3
+enabled = true
+url = "https://github.com/vitejs/vite.git"
+commit = "e6b6b167afa0a80548829d1f24a0712f9194389a"
+roots = ["packages/vite/src"]
+
+[[repo]]
+name = "tanstack-router"
+lang = "ts"
+stage = 3
+enabled = true
+url = "https://github.com/TanStack/router.git"
+commit = "2cb221cfd3b95f55498b22e76e9ac96a32cd26d4"
+# The monorepo has ~40 packages (per-framework adapters for React/Solid/Vue,
+# devtools, start/SSR). router-core + react-router are the representative
+# pair: framework-agnostic core plus one binding, not the whole adapter fan-out.
+roots = ["packages/router-core/src", "packages/react-router/src"]
+
+[[repo]]
+name = "esbuild"
+lang = "go"
+enabled = false
+note = "needs Go >= 1.24; deferred to Phase 1 (installed Go is 1.16.5)"
+url = "https://github.com/evanw/esbuild.git"
+commit = "6ff1d8b0d8c134e867a397eef39702a223ebef9e"
+roots = ["."]
+
+[[repo]]
+name = "hugo"
+lang = "go"
+enabled = false
+note = "needs Go >= 1.24; deferred to Phase 1 (installed Go is 1.16.5)"
+url = "https://github.com/gohugoio/hugo.git"
+commit = "8a468df065a75c1c7cf9f6850f32148746590ea5"
+roots = ["."]
+
+[[repo]]
+name = "go-stdlib"
+lang = "go"
+enabled = false
+note = "needs Go >= 1.24; deferred to Phase 1 (installed Go is 1.16.5)"
+url = "https://github.com/golang/go.git"
+commit = "5d29d80b6c9960c3fc39e14e3e8b9a0f52041fed"
+roots = ["src/net/http", "src/encoding/json"]
