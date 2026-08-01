@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# pinned corpus checkouts — regenerate via corpus/sync.py; graphs are the checked-in artifact
+corpus/checkouts/
