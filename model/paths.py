@@ -9,11 +9,16 @@ compute it — see the verification table in the Phase 0 plan.
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 
 def dirs(path: str) -> tuple[str, ...]:
-    """Directory components of a repo-root-relative POSIX path, excluding the filename."""
-    parts = path.split("/")
-    return tuple(parts[:-1])
+    """Directory components of a repo-root-relative POSIX path, excluding the filename.
+
+    PurePosixPath, not Path: ids are POSIX-normalized by contract (see the schema
+    in the Phase 0 plan), so parsing must not depend on which OS this runs on.
+    """
+    return PurePosixPath(path).parts[:-1]
 
 
 def common_prefix_len(a: tuple[str, ...], b: tuple[str, ...]) -> int:
