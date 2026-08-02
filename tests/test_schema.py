@@ -9,8 +9,6 @@ def make_node(id: str, imports: tuple[str, ...] = (), type_only: tuple[str, ...]
     return Node(
         id=id,
         kind="file",
-        loc=10,
-        is_face=False,
         is_barrel=False,
         imports=imports,
         type_only=type_only,

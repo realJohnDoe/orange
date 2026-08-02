@@ -1,11 +1,16 @@
 """is_face / is_barrel structural predicates.
 
-These are facts about a file's role in the containment tree -- the cost
-model and barrel splicing need them, so extractors compute them at
-extraction time. Test/generated status is deliberately not here: per the
-plan's "extract once, filter in analysis" principle, that's an
-analysis-time exclude-glob concern for report/run.py (not yet built), the
-same as barrel-splicing and type-edge filtering. Nothing about excluding
+Both describe a file's role in the containment tree, but differently:
+is_face is a pure function of (path, lang) -- no file content needed, so it
+is never stored on a Node (see extractors.schema). is_barrel_py/is_barrel_ts
+answer a content question ("is this file purely re-exports?") that only the
+extractor's parse of the source can settle, so the cost model and barrel
+splicing need that result stored per-node at extraction time.
+
+Test/generated status is deliberately not here either: per the plan's
+"extract once, filter in analysis" principle, that's an analysis-time
+exclude-glob concern for report/run.py (not yet built), the same as
+barrel-splicing and type-edge filtering. Nothing about excluding
 tests/generated files belongs in this module until that CLI exists to
 consume it.
 """

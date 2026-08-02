@@ -10,6 +10,14 @@ Graph that exists is already structurally sound: no duplicate node ids, no
 edge pointing at a node that doesn't exist, type_only is always a subset of
 imports, ids are POSIX-relative. Downstream code does not need to re-check
 any of this.
+
+There's no is_face field: it's a pure function of (id, lang) with no
+extraction-time work behind it -- see extractors.classify.is_face(node.id,
+graph.lang) rather than storing a value that's always fully recoverable
+from data already here. is_barrel and type_only stay stored fields because
+they encode facts about a file's *content* (is it purely re-exports? which
+imports are type-only?) that only the extractor's parse of the source can
+answer, and the source isn't available once a graph is cached as JSON.
 """
 
 from __future__ import annotations
@@ -30,8 +38,6 @@ _COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
 class Node:
     id: str
     kind: Literal["file"]
-    loc: int
-    is_face: bool
     is_barrel: bool
     imports: tuple[str, ...] = ()
     type_only: tuple[str, ...] = ()
@@ -92,8 +98,6 @@ def to_dict(graph: Graph) -> dict[str, Any]:
             {
                 "id": n.id,
                 "kind": n.kind,
-                "loc": n.loc,
-                "is_face": n.is_face,
                 "is_barrel": n.is_barrel,
                 "imports": list(n.imports),
                 "type_only": list(n.type_only),
@@ -121,8 +125,6 @@ def from_dict(data: dict[str, Any]) -> Graph:
             Node(
                 id=n["id"],
                 kind=n["kind"],
-                loc=n["loc"],
-                is_face=n["is_face"],
                 is_barrel=n["is_barrel"],
                 imports=tuple(n.get("imports", ())),
                 type_only=tuple(n.get("type_only", ())),
