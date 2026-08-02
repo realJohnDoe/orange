@@ -45,7 +45,7 @@ def test_stage_1_repos_are_enabled() -> None:
     assert stage_1_names == {"flask", "requests", "rich", "meridian2"}
 
 
-def test_meridian2_is_local_not_cloned() -> None:
+def test_meridian2_is_cloned_from_github() -> None:
     entries = {e.name: e for e in load_manifest()}
-    assert entries["meridian2"].local_path is not None
-    assert entries["meridian2"].url is None
+    assert entries["meridian2"].url == "https://github.com/realJohnDoe/meridian.git"
+    assert entries["meridian2"].local_path is None

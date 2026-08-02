@@ -44,13 +44,13 @@ commit = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
 roots = ["rich"]
 
 [[repo]]
+# Corpus label kept as "meridian2" per plan.md's naming (the app repo being
+# analyzed) -- the actual GitHub repo is "meridian", without the suffix.
 name = "meridian2"
 lang = "ts"
 stage = 1
 enabled = true
-# Not cloned -- this is the user's live development checkout. sync.py only
-# verifies it is at the pinned commit and warns (does not fail) if not.
-local_path = "C:/Users/johan/code/meridian2"
+url = "https://github.com/realJohnDoe/meridian.git"
 commit = "469126e4c51086bd07241782a2f325f78add25a8"
 roots = ["src", "worker/src"]
 
