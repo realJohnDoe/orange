@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Phase 0 measurement pipeline: dependency-graph cost metrics over a corpus of repos"
 requires-python = ">=3.13"
 dependencies = [
+    "grimp>=3.15",
     "matplotlib>=3.10.9",
     "numpy>=2.2.6",
     "typer>=0.27.0",
