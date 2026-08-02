@@ -51,9 +51,15 @@ class Node:
 
 @dataclass(frozen=True, slots=True)
 class Stats:
+    # Imports the extractor saw but could not resolve to any file. A data-quality
+    # signal: a repo with a high ratio has an unreliable graph and must be flagged
+    # in the report rather than silently averaged in. Always 0 for the Python
+    # extractor -- grimp resolves every internal import or classifies it external,
+    # so there is no unresolved category; it is the TypeScript extractor (step 5,
+    # dependency-cruiser without node_modules installed) that this exists for.
     unresolved_imports: int = 0
+    # Imports resolved to something outside the analyzed roots (third-party, stdlib).
     external_imports_dropped: int = 0
-    ambiguous: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +69,6 @@ class Graph:
     commit: str
     extractor: str
     roots: tuple[str, ...]
-    generated_at: str
     nodes: tuple[Node, ...]
     stats: Stats = field(default_factory=Stats)
 
@@ -88,11 +93,9 @@ def to_dict(graph: Graph) -> dict[str, Any]:
         "commit": graph.commit,
         "extractor": graph.extractor,
         "roots": list(graph.roots),
-        "generated_at": graph.generated_at,
         "stats": {
             "unresolved_imports": graph.stats.unresolved_imports,
             "external_imports_dropped": graph.stats.external_imports_dropped,
-            "ambiguous": graph.stats.ambiguous,
         },
         "nodes": [
             {
@@ -115,11 +118,9 @@ def from_dict(data: dict[str, Any]) -> Graph:
         commit=data["commit"],
         extractor=data["extractor"],
         roots=tuple(data["roots"]),
-        generated_at=data["generated_at"],
         stats=Stats(
             unresolved_imports=stats_data.get("unresolved_imports", 0),
             external_imports_dropped=stats_data.get("external_imports_dropped", 0),
-            ambiguous=stats_data.get("ambiguous", 0),
         ),
         nodes=tuple(
             Node(
@@ -135,10 +136,16 @@ def from_dict(data: dict[str, Any]) -> Graph:
 
 
 def write(graph: Graph, path: Path) -> None:
-    """Write gzip-compressed JSON to path (typically corpus/graphs/<repo>.json.gz)."""
+    """Write gzip-compressed JSON to path (typically corpus/graphs/<repo>.json.gz).
+
+    Byte-for-byte deterministic: sorted keys, and mtime=0 so gzip does not stamp
+    the current time into its header. These files are checked in, so re-extracting
+    an unchanged repo must produce no diff -- otherwise every run dirties git and
+    real changes get lost in the noise.
+    """
     payload = json.dumps(to_dict(graph), indent=2, sort_keys=True).encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(path, "wb") as f:
+    with gzip.GzipFile(path, "wb", mtime=0) as f:
         f.write(payload)
 
 

@@ -22,12 +22,11 @@ def make_graph() -> Graph:
         commit="a" * 40,
         extractor="test-fixture",
         roots=("src",),
-        generated_at="2026-08-01T00:00:00Z",
         nodes=(
             make_node("src/a.ts", imports=("src/b.ts",), type_only=("src/b.ts",)),
             make_node("src/b.ts"),
         ),
-        stats=Stats(unresolved_imports=1, external_imports_dropped=2, ambiguous=0),
+        stats=Stats(unresolved_imports=1, external_imports_dropped=2),
     )
 
 
@@ -44,7 +43,6 @@ def test_rejects_duplicate_node_ids() -> None:
             commit="a" * 40,
             extractor="test-fixture",
             roots=("src",),
-            generated_at="2026-08-01T00:00:00Z",
             nodes=(make_node("src/a.ts"), make_node("src/a.ts")),
         )
 
@@ -57,7 +55,6 @@ def test_rejects_edge_to_unknown_node() -> None:
             commit="a" * 40,
             extractor="test-fixture",
             roots=("src",),
-            generated_at="2026-08-01T00:00:00Z",
             nodes=(make_node("src/a.ts", imports=("src/missing.ts",)),),
         )
 
@@ -70,7 +67,6 @@ def test_rejects_non_sha_commit() -> None:
             commit="main",
             extractor="test-fixture",
             roots=("src",),
-            generated_at="2026-08-01T00:00:00Z",
             nodes=(),
         )
 
