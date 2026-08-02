@@ -1,59 +1,25 @@
-"""is_face / is_barrel structural predicates, and a generic path-exclusion matcher.
+"""is_face / is_barrel structural predicates.
 
-is_face and is_barrel are facts about a file's role in the containment tree --
-the cost model and barrel splicing need them, so extractors compute them at
-extraction time. Test/generated status is not: it's an analysis-time filter,
-applied by matching a node's id against exclude glob patterns rather than
-being baked into the cached graph. That keeps it consistent with how the
-plan already treats barrel-splicing and type-edge filtering (post-hoc
-transforms over one maximally-inclusive graph), and it means "without
-tests" / "without generated files" are just two values of the same
---exclude/--ignore flag report/run.py exposes, not separate schema fields.
-
-DEFAULT_TEST_EXCLUDES and DEFAULT_GENERATED_EXCLUDES are exactly that: sensible
-default values for --exclude, not classification rules a node is stamped
-with. A repo with an unusual convention passes different patterns at report
-time -- no code change needed.
+These are facts about a file's role in the containment tree -- the cost
+model and barrel splicing need them, so extractors compute them at
+extraction time. Test/generated status is deliberately not here: per the
+plan's "extract once, filter in analysis" principle, that's an
+analysis-time exclude-glob concern for report/run.py (not yet built), the
+same as barrel-splicing and type-edge filtering. Nothing about excluding
+tests/generated files belongs in this module until that CLI exists to
+consume it.
 """
 
 from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Sequence
 from pathlib import PurePosixPath
-
-DEFAULT_TEST_EXCLUDES: tuple[str, ...] = (
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "**/__tests__/**",
-    "**/test-utils/**",
-    "**/test_*.py",
-    "**/*_test.py",
-    "**/tests/**",
-    "**/conftest.py",
-    "**/e2e/**",
-    "**/*.bench.*",
-)
-
-DEFAULT_GENERATED_EXCLUDES: tuple[str, ...] = (
-    "**/*.gen.ts",
-    "**/*.generated.*",
-    "**/*_pb2.py",
-)
 
 FACE_FILENAMES: dict[str, tuple[str, ...]] = {
     "py": ("__init__.py",),
     "ts": ("index.ts", "index.tsx"),
 }
-
-
-def matches_any(path: str, patterns: Sequence[str]) -> bool:
-    """Whether path matches any of the given glob patterns (`**` supported)."""
-    p = PurePosixPath(path)
-    return any(p.full_match(pattern) for pattern in patterns)
 
 
 def is_face(path: str, lang: str) -> bool:

@@ -1,41 +1,6 @@
 import pytest
 
-from extractors.classify import (
-    DEFAULT_GENERATED_EXCLUDES,
-    DEFAULT_TEST_EXCLUDES,
-    is_barrel_py,
-    is_barrel_ts,
-    is_face,
-    matches_any,
-)
-
-MATCHES_TEST_DEFAULTS = [
-    pytest.param("src/calendar/agenda.test.ts", True, id="dot-test-ts"),
-    pytest.param("src/calendar/agenda.tsx", False, id="not-a-test"),
-    pytest.param("src/model/__tests__/foo.ts", True, id="tests-dir"),
-    pytest.param("src/model/foo.ts", False, id="sibling-of-tests-dir"),
-    pytest.param("a/b/conftest.py", True, id="conftest"),
-    pytest.param("a/b/test_foo.py", True, id="test-prefix-py"),
-    pytest.param("a/b/foo_test.py", True, id="test-suffix-py"),
-    pytest.param("a/b/foo.py", False, id="plain-py"),
-]
-
-
-@pytest.mark.parametrize("path,expected", MATCHES_TEST_DEFAULTS)
-def test_matches_any_against_default_test_excludes(path: str, expected: bool) -> None:
-    assert matches_any(path, DEFAULT_TEST_EXCLUDES) == expected
-
-
-def test_matches_any_against_default_generated_excludes() -> None:
-    assert matches_any("src/routeTree.gen.ts", DEFAULT_GENERATED_EXCLUDES) is True
-    assert matches_any("src/model/schema_pb2.py", DEFAULT_GENERATED_EXCLUDES) is True
-    assert matches_any("src/model/schema.py", DEFAULT_GENERATED_EXCLUDES) is False
-
-
-def test_matches_any_with_repo_specific_patterns() -> None:
-    # e.g. a manifest entry's `exclude` merged in by report/run.py.
-    assert matches_any("src/fixtures/foo.ts", ("**/fixtures/**",)) is True
-    assert matches_any("src/fixtures/foo.ts", DEFAULT_TEST_EXCLUDES) is False
+from extractors.classify import is_barrel_py, is_barrel_ts, is_face
 
 
 @pytest.mark.parametrize(
