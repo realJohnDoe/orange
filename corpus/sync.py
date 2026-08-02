@@ -1,11 +1,6 @@
 """Clone or fetch each enabled corpus repo to its pinned commit.
 
 Idempotent: a repo already checked out at its pinned commit is left alone.
-A repo entry may instead set `local_path` to point at an existing checkout
-(e.g. a live development directory) rather than `url` -- such repos are
-never cloned or written to; sync only verifies the pinned commit is
-checked out there and warns (does not fail) on a mismatch, since
-overwriting a working checkout would be destructive.
 
 Each clone is a single-commit shallow fetch (`git init` + `git fetch
 --depth 1 origin <sha>` + `git checkout FETCH_HEAD`), not a full clone --
@@ -15,7 +10,6 @@ we only ever need the tree at the pinned commit.
 from __future__ import annotations
 
 import subprocess
-import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,23 +27,18 @@ class RepoEntry:
     lang: str
     commit: str
     roots: tuple[str, ...]
+    url: str
     enabled: bool = True
     stage: int | None = None
-    url: str | None = None
-    local_path: str | None = None
     note: str = ""
     # Extra --exclude/--ignore patterns for report/run.py, on top of whatever
     # it's invoked with -- for a repo whose tests/generated files don't follow
     # the default naming conventions. Not used by sync.py itself.
     exclude: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        if bool(self.url) == bool(self.local_path):
-            raise ValueError(f"{self.name}: exactly one of url/local_path must be set")
-
     @property
     def checkout_path(self) -> Path:
-        return Path(self.local_path) if self.local_path else CHECKOUTS_DIR / self.name
+        return CHECKOUTS_DIR / self.name
 
 
 def load_manifest(path: Path = MANIFEST_PATH) -> list[RepoEntry]:
@@ -60,10 +49,9 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[RepoEntry]:
             lang=r["lang"],
             commit=r["commit"],
             roots=tuple(r["roots"]),
+            url=r["url"],
             enabled=r.get("enabled", True),
             stage=r.get("stage"),
-            url=r.get("url"),
-            local_path=r.get("local_path"),
             note=r.get("note", ""),
             exclude=tuple(r.get("exclude", ())),
         )
@@ -77,27 +65,6 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[RepoEntry]:
 
 
 def sync(entry: RepoEntry) -> None:
-    if entry.local_path is not None:
-        _verify_local(entry)
-    else:
-        _fetch_pinned_commit(entry)
-
-
-def _verify_local(entry: RepoEntry) -> None:
-    path = entry.checkout_path
-    if not path.is_dir():
-        raise FileNotFoundError(f"{entry.name}: local_path {path} does not exist")
-    head = _git(path, "rev-parse", "HEAD").strip()
-    if head != entry.commit:
-        print(
-            f"warning: {entry.name} is checked out at {head[:12]}, manifest pins "
-            f"{entry.commit[:12]} -- results will reflect the working checkout, not the pin",
-            file=sys.stderr,
-        )
-
-
-def _fetch_pinned_commit(entry: RepoEntry) -> None:
-    assert entry.url is not None, f"{entry.name}: _fetch_pinned_commit requires a url"
     path = entry.checkout_path
     if (path / ".git").exists():
         head = _git(path, "rev-parse", "HEAD").strip()

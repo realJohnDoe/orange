@@ -22,11 +22,9 @@ def test_every_entry_has_nonempty_roots() -> None:
         assert entry.roots, f"{entry.name}: roots must not be empty"
 
 
-def test_every_entry_has_exactly_one_source() -> None:
-    # RepoEntry.__post_init__ already enforces this at construction; re-asserting
-    # here documents the invariant against the real manifest data.
+def test_every_entry_has_a_url() -> None:
     for entry in load_manifest():
-        assert (entry.url is None) != (entry.local_path is None)
+        assert entry.url, f"{entry.name}: url must not be empty"
 
 
 def test_lang_is_known() -> None:
@@ -48,4 +46,3 @@ def test_stage_1_repos_are_enabled() -> None:
 def test_meridian2_is_cloned_from_github() -> None:
     entries = {e.name: e for e in load_manifest()}
     assert entries["meridian2"].url == "https://github.com/realJohnDoe/meridian.git"
-    assert entries["meridian2"].local_path is None

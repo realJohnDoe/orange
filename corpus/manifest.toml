@@ -6,12 +6,11 @@
 #
 # stage:   which build-order stage (see the Phase 0 plan) first analyzes
 #          this repo. Omitted for disabled entries.
-# roots:   source directories analyzed, relative to the repo root (or to
-#          `local_path` for repos that are not cloned). Verified against
-#          each repo's actual layout at the pinned commit via the GitHub
-#          contents API, not guessed -- several differ from what plan.md
-#          assumed (requests and date-fns have both moved to different
-#          layouts since the corpus was chosen).
+# roots:   source directories analyzed, relative to the repo root. Verified
+#          against each repo's actual layout at the pinned commit via the
+#          GitHub contents API, not guessed -- several differ from what
+#          plan.md assumed (requests and date-fns have both moved to
+#          different layouts since the corpus was chosen).
 # enabled: false entries are skipped by corpus/sync.py and the extractors;
 #          `note` records why.
 # exclude: extra --exclude/--ignore glob patterns for report/run.py, for a
@@ -19,7 +18,6 @@
 #          conventions (extractors.classify.DEFAULT_TEST_EXCLUDES /
 #          DEFAULT_GENERATED_EXCLUDES). Not used by sync.py. Omitted where
 #          the defaults are sufficient.
-# exactly one of `url` / `local_path` must be set per entry.
 
 [[repo]]
 name = "flask"
