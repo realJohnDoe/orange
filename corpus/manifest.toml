@@ -4,8 +4,6 @@
 # "current main" is a moving target that would silently invalidate every
 # cached graph in corpus/graphs/. Re-pin deliberately, not by accident.
 #
-# stage: which build-order stage (see the Phase 0 plan) first analyzes this
-#        repo.
 # roots: source directories analyzed, relative to the repo root. Verified
 #        against each repo's actual layout at the pinned commit via the
 #        GitHub contents API, not guessed -- several differ from what
@@ -21,7 +19,6 @@
 [[repo]]
 name = "flask"
 lang = "py"
-stage = 1
 url = "https://github.com/pallets/flask.git"
 commit = "6a2f545bfd8ed31e19066a299296917e034aca58"
 roots = ["src/flask"]
@@ -29,7 +26,6 @@ roots = ["src/flask"]
 [[repo]]
 name = "requests"
 lang = "py"
-stage = 1
 url = "https://github.com/psf/requests.git"
 commit = "414f0513c33883adf6f2b46901d4f0b38a455851"
 roots = ["src/requests"]
@@ -37,7 +33,6 @@ roots = ["src/requests"]
 [[repo]]
 name = "rich"
 lang = "py"
-stage = 1
 url = "https://github.com/Textualize/rich.git"
 commit = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
 roots = ["rich"]
@@ -47,7 +42,6 @@ roots = ["rich"]
 # analyzed) -- the actual GitHub repo is "meridian", without the suffix.
 name = "meridian2"
 lang = "ts"
-stage = 1
 url = "https://github.com/realJohnDoe/meridian.git"
 commit = "469126e4c51086bd07241782a2f325f78add25a8"
 roots = ["src", "worker/src"]
@@ -55,7 +49,6 @@ roots = ["src", "worker/src"]
 [[repo]]
 name = "zod"
 lang = "ts"
-stage = 2
 url = "https://github.com/colinhacks/zod.git"
 commit = "912f0f51b0ced654d0069741e7160834dca742ee"
 roots = ["packages/zod/src"]
@@ -63,7 +56,6 @@ roots = ["packages/zod/src"]
 [[repo]]
 name = "date-fns"
 lang = "ts"
-stage = 2
 url = "https://github.com/date-fns/date-fns.git"
 commit = "4098115cf705e3af7f663d8e5b0686e39a9f478a"
 # date-fns became a pnpm monorepo since plan.md was written; pkgs/core is the
@@ -73,7 +65,6 @@ roots = ["pkgs/core/src"]
 [[repo]]
 name = "vite"
 lang = "ts"
-stage = 3
 url = "https://github.com/vitejs/vite.git"
 commit = "e6b6b167afa0a80548829d1f24a0712f9194389a"
 roots = ["packages/vite/src"]
@@ -81,7 +72,6 @@ roots = ["packages/vite/src"]
 [[repo]]
 name = "tanstack-router"
 lang = "ts"
-stage = 3
 url = "https://github.com/TanStack/router.git"
 commit = "2cb221cfd3b95f55498b22e76e9ac96a32cd26d4"
 # The monorepo has ~40 packages (per-framework adapters for React/Solid/Vue,

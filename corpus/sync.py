@@ -28,7 +28,6 @@ class RepoEntry:
     commit: str
     roots: tuple[str, ...]
     url: str
-    stage: int
 
     @property
     def checkout_path(self) -> Path:
@@ -44,7 +43,6 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[RepoEntry]:
             commit=r["commit"],
             roots=tuple(r["roots"]),
             url=r["url"],
-            stage=r["stage"],
         )
         for r in data["repo"]
     ]
@@ -77,13 +75,13 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def main(
-    stage: Annotated[
-        int | None, typer.Option(help="only sync repos in this stage")
+    lang: Annotated[
+        str | None, typer.Option(help="only sync repos in this language (py, ts)")
     ] = None,
 ) -> None:
     entries = load_manifest()
-    if stage is not None:
-        entries = [e for e in entries if e.stage == stage]
+    if lang is not None:
+        entries = [e for e in entries if e.lang == lang]
 
     for entry in entries:
         print(f"syncing {entry.name} @ {entry.commit[:12]}...")

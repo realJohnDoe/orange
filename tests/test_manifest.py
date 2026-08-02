@@ -32,14 +32,10 @@ def test_lang_is_known() -> None:
         assert entry.lang in ("py", "ts")
 
 
-def test_every_entry_has_a_valid_stage() -> None:
-    for entry in load_manifest():
-        assert entry.stage in (1, 2, 3), f"{entry.name}: stage {entry.stage!r} is not 1/2/3"
-
-
-def test_stage_1_repos() -> None:
-    stage_1_names = {e.name for e in load_manifest() if e.stage == 1}
-    assert stage_1_names == {"flask", "requests", "rich", "meridian2"}
+def test_lang_counts() -> None:
+    langs = [e.lang for e in load_manifest()]
+    assert langs.count("py") == 3
+    assert langs.count("ts") == 5
 
 
 def test_meridian2_is_cloned_from_github() -> None:
