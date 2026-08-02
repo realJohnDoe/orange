@@ -29,17 +29,16 @@ def test_every_entry_has_a_url() -> None:
 
 def test_lang_is_known() -> None:
     for entry in load_manifest():
-        assert entry.lang in ("py", "ts", "go")
+        assert entry.lang in ("py", "ts")
 
 
-def test_disabled_entries_explain_why() -> None:
+def test_every_entry_has_a_valid_stage() -> None:
     for entry in load_manifest():
-        if not entry.enabled:
-            assert entry.note, f"{entry.name}: disabled entries must set note"
+        assert entry.stage in (1, 2, 3), f"{entry.name}: stage {entry.stage!r} is not 1/2/3"
 
 
-def test_stage_1_repos_are_enabled() -> None:
-    stage_1_names = {e.name for e in load_manifest() if e.enabled and e.stage == 1}
+def test_stage_1_repos() -> None:
+    stage_1_names = {e.name for e in load_manifest() if e.stage == 1}
     assert stage_1_names == {"flask", "requests", "rich", "meridian2"}
 
 
