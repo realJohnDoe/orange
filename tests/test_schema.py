@@ -12,8 +12,6 @@ def make_node(id: str, imports: tuple[str, ...] = (), type_only: tuple[str, ...]
         loc=10,
         is_face=False,
         is_barrel=False,
-        is_test=False,
-        is_generated=False,
         imports=imports,
         type_only=type_only,
     )

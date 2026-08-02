@@ -33,8 +33,6 @@ class Node:
     loc: int
     is_face: bool
     is_barrel: bool
-    is_test: bool
-    is_generated: bool
     imports: tuple[str, ...] = ()
     type_only: tuple[str, ...] = ()
 
@@ -97,8 +95,6 @@ def to_dict(graph: Graph) -> dict[str, Any]:
                 "loc": n.loc,
                 "is_face": n.is_face,
                 "is_barrel": n.is_barrel,
-                "is_test": n.is_test,
-                "is_generated": n.is_generated,
                 "imports": list(n.imports),
                 "type_only": list(n.type_only),
             }
@@ -128,8 +124,6 @@ def from_dict(data: dict[str, Any]) -> Graph:
                 loc=n["loc"],
                 is_face=n["is_face"],
                 is_barrel=n["is_barrel"],
-                is_test=n["is_test"],
-                is_generated=n["is_generated"],
                 imports=tuple(n.get("imports", ())),
                 type_only=tuple(n.get("type_only", ())),
             )

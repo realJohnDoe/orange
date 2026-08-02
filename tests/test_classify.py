@@ -1,15 +1,15 @@
 import pytest
 
 from extractors.classify import (
-    RepoOverrides,
+    DEFAULT_GENERATED_EXCLUDES,
+    DEFAULT_TEST_EXCLUDES,
     is_barrel_py,
     is_barrel_ts,
     is_face,
-    is_generated,
-    is_test,
+    matches_any,
 )
 
-TEST_CASES = [
+MATCHES_TEST_DEFAULTS = [
     pytest.param("src/calendar/agenda.test.ts", True, id="dot-test-ts"),
     pytest.param("src/calendar/agenda.tsx", False, id="not-a-test"),
     pytest.param("src/model/__tests__/foo.ts", True, id="tests-dir"),
@@ -21,26 +21,21 @@ TEST_CASES = [
 ]
 
 
-@pytest.mark.parametrize("path,expected", TEST_CASES)
-def test_is_test(path: str, expected: bool) -> None:
-    assert is_test(path) == expected
+@pytest.mark.parametrize("path,expected", MATCHES_TEST_DEFAULTS)
+def test_matches_any_against_default_test_excludes(path: str, expected: bool) -> None:
+    assert matches_any(path, DEFAULT_TEST_EXCLUDES) == expected
 
 
-def test_is_test_respects_repo_overrides() -> None:
-    overrides = RepoOverrides(test_globs=("**/fixtures/**",))
-    assert is_test("src/fixtures/foo.ts", overrides) is True
-    assert is_test("src/fixtures/foo.ts") is False
+def test_matches_any_against_default_generated_excludes() -> None:
+    assert matches_any("src/routeTree.gen.ts", DEFAULT_GENERATED_EXCLUDES) is True
+    assert matches_any("src/model/schema_pb2.py", DEFAULT_GENERATED_EXCLUDES) is True
+    assert matches_any("src/model/schema.py", DEFAULT_GENERATED_EXCLUDES) is False
 
 
-def test_is_generated_by_filename() -> None:
-    assert is_generated("src/routeTree.gen.ts") is True
-    assert is_generated("src/model/schema_pb2.py") is True
-    assert is_generated("src/model/schema.py") is False
-
-
-def test_is_generated_by_header_sentinel() -> None:
-    assert is_generated("worker/worker-configuration.d.ts", head="// DO NOT EDIT\n") is True
-    assert is_generated("worker/worker-configuration.d.ts", head="// hand-written\n") is False
+def test_matches_any_with_repo_specific_patterns() -> None:
+    # e.g. a manifest entry's `exclude` merged in by report/run.py.
+    assert matches_any("src/fixtures/foo.ts", ("**/fixtures/**",)) is True
+    assert matches_any("src/fixtures/foo.ts", DEFAULT_TEST_EXCLUDES) is False
 
 
 @pytest.mark.parametrize(

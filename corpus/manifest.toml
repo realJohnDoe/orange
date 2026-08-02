@@ -14,6 +14,11 @@
 #          layouts since the corpus was chosen).
 # enabled: false entries are skipped by corpus/sync.py and the extractors;
 #          `note` records why.
+# exclude: extra --exclude/--ignore glob patterns for report/run.py, for a
+#          repo whose tests/generated files don't follow the default naming
+#          conventions (extractors.classify.DEFAULT_TEST_EXCLUDES /
+#          DEFAULT_GENERATED_EXCLUDES). Not used by sync.py. Omitted where
+#          the defaults are sufficient.
 # exactly one of `url` / `local_path` must be set per entry.
 
 [[repo]]

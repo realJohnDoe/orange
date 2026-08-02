@@ -1,21 +1,29 @@
-"""is_test / is_generated / is_face / is_barrel classification rules.
+"""is_face / is_barrel structural predicates, and a generic path-exclusion matcher.
 
-One place for these predicates so both extractors -- and the report, which
-needs to explain a repo's numbers -- agree on what counts as a test file,
-what's generated, and what's a barrel. Per-repo pattern additions come from
-corpus/manifest.toml (see corpus.sync.RepoEntry) rather than from editing
-this file, so an unusual repo convention is a data change, not a code
-change.
+is_face and is_barrel are facts about a file's role in the containment tree --
+the cost model and barrel splicing need them, so extractors compute them at
+extraction time. Test/generated status is not: it's an analysis-time filter,
+applied by matching a node's id against exclude glob patterns rather than
+being baked into the cached graph. That keeps it consistent with how the
+plan already treats barrel-splicing and type-edge filtering (post-hoc
+transforms over one maximally-inclusive graph), and it means "without
+tests" / "without generated files" are just two values of the same
+--exclude/--ignore flag report/run.py exposes, not separate schema fields.
+
+DEFAULT_TEST_EXCLUDES and DEFAULT_GENERATED_EXCLUDES are exactly that: sensible
+default values for --exclude, not classification rules a node is stamped
+with. A repo with an unusual convention passes different patterns at report
+time -- no code change needed.
 """
 
 from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import PurePosixPath
 
-TEST_GLOBS: tuple[str, ...] = (
+DEFAULT_TEST_EXCLUDES: tuple[str, ...] = (
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",
@@ -30,20 +38,10 @@ TEST_GLOBS: tuple[str, ...] = (
     "**/*.bench.*",
 )
 
-GENERATED_GLOBS: tuple[str, ...] = (
+DEFAULT_GENERATED_EXCLUDES: tuple[str, ...] = (
     "**/*.gen.ts",
     "**/*.generated.*",
     "**/*_pb2.py",
-)
-
-# Substrings looked for in the first few lines of a file, for generated files
-# that don't follow a naming convention (e.g. meridian2's routeTree.gen.ts
-# already matches GENERATED_GLOBS; this catches the ones that don't).
-GENERATED_HEADER_SENTINELS: tuple[str, ...] = (
-    "@generated",
-    "Code generated",
-    "DO NOT EDIT",
-    "This file was automatically generated",
 )
 
 FACE_FILENAMES: dict[str, tuple[str, ...]] = {
@@ -52,22 +50,10 @@ FACE_FILENAMES: dict[str, tuple[str, ...]] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class RepoOverrides:
-    """Per-repo pattern additions, sourced from manifest.toml."""
-
-    test_globs: tuple[str, ...] = ()
-    generated_globs: tuple[str, ...] = ()
-
-
-def is_test(path: str, overrides: RepoOverrides = RepoOverrides()) -> bool:
-    return _match_any(path, TEST_GLOBS + overrides.test_globs)
-
-
-def is_generated(path: str, head: str = "", overrides: RepoOverrides = RepoOverrides()) -> bool:
-    if _match_any(path, GENERATED_GLOBS + overrides.generated_globs):
-        return True
-    return any(sentinel in head for sentinel in GENERATED_HEADER_SENTINELS)
+def matches_any(path: str, patterns: Sequence[str]) -> bool:
+    """Whether path matches any of the given glob patterns (`**` supported)."""
+    p = PurePosixPath(path)
+    return any(p.full_match(pattern) for pattern in patterns)
 
 
 def is_face(path: str, lang: str) -> bool:
@@ -124,8 +110,3 @@ def is_barrel_ts(source: str) -> bool:
     if not lines:
         return False
     return all(_TS_BARREL_STATEMENT.match(line) for line in lines)
-
-
-def _match_any(path: str, globs: tuple[str, ...]) -> bool:
-    p = PurePosixPath(path)
-    return any(p.full_match(glob) for glob in globs)

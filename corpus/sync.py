@@ -1,10 +1,11 @@
 """Clone or fetch each enabled corpus repo to its pinned commit.
 
 Idempotent: a repo already checked out at its pinned commit is left alone.
-Repos with a `local_path` (meridian2) are never cloned or written to --
-sync only verifies the pinned commit is checked out there and warns (does
-not fail) on a mismatch, since overwriting a live development checkout
-would be destructive.
+A repo entry may instead set `local_path` to point at an existing checkout
+(e.g. a live development directory) rather than `url` -- such repos are
+never cloned or written to; sync only verifies the pinned commit is
+checked out there and warns (does not fail) on a mismatch, since
+overwriting a working checkout would be destructive.
 
 Each clone is a single-commit shallow fetch (`git init` + `git fetch
 --depth 1 origin <sha>` + `git checkout FETCH_HEAD`), not a full clone --
@@ -13,14 +14,14 @@ we only ever need the tree at the pinned commit.
 
 from __future__ import annotations
 
-import argparse
 import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
-from extractors.classify import RepoOverrides
+import typer
 
 MANIFEST_PATH = Path(__file__).parent / "manifest.toml"
 CHECKOUTS_DIR = Path(__file__).parent / "checkouts"
@@ -37,7 +38,10 @@ class RepoEntry:
     url: str | None = None
     local_path: str | None = None
     note: str = ""
-    overrides: RepoOverrides = RepoOverrides()
+    # Extra --exclude/--ignore patterns for report/run.py, on top of whatever
+    # it's invoked with -- for a repo whose tests/generated files don't follow
+    # the default naming conventions. Not used by sync.py itself.
+    exclude: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if bool(self.url) == bool(self.local_path):
@@ -61,10 +65,7 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[RepoEntry]:
             url=r.get("url"),
             local_path=r.get("local_path"),
             note=r.get("note", ""),
-            overrides=RepoOverrides(
-                test_globs=tuple(r.get("test_globs", ())),
-                generated_globs=tuple(r.get("generated_globs", ())),
-            ),
+            exclude=tuple(r.get("exclude", ())),
         )
         for r in data["repo"]
     ]
@@ -117,16 +118,14 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--stage", type=int, default=None, help="only sync repos in this stage"
-    )
-    args = parser.parse_args()
-
+def main(
+    stage: Annotated[
+        int | None, typer.Option(help="only sync repos in this stage")
+    ] = None,
+) -> None:
     entries = [e for e in load_manifest() if e.enabled]
-    if args.stage is not None:
-        entries = [e for e in entries if e.stage == args.stage]
+    if stage is not None:
+        entries = [e for e in entries if e.stage == stage]
 
     for entry in entries:
         print(f"syncing {entry.name} @ {entry.commit[:12]}...")
@@ -134,4 +133,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
