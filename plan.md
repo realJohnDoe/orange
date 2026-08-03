@@ -190,10 +190,32 @@ Per repo, compute over the **actual** layout:
 3. **Depth vs. fan-in correlation.** Spearman between a file's directory depth and its number of
    distinct importers. Tests "shared goes shallow" head-on. Should be strongly negative.
 4. **Total cost**, normalized by edge count, for cross-repo comparison.
+5. **Directory cohesion** (added after an early corpus pass, not in the original design). For
+   every directory with ≥2 direct children, is the induced subgraph over those children connected?
+   This catches what cost can't: two mutually-unrelated files sitting in one directory cost 0
+   either way, so nothing about Σcost ever pressures them apart. A disconnected split is either
+   benign — independent test files, per-locale/per-version data tables (`rich/_unicode_data`, zod's
+   `v3/tests`) — or a genuine placement candidate (zod's `v4/core/zsf.ts`, sharing zero edges with
+   the other 18 files in `core/`). These two cases have **identical graph shape** — N mutually
+   disconnected files, each reached only from outside — so file-level data cannot reliably tell
+   them apart. See "Do symbols matter?" under Open questions.
 
-**Decision point.** If well-engineered repos are overwhelmingly cost-0/1 and the depth/fan-in
-correlation is strongly negative, the rule is descriptive and worth enforcing. If they are heavy
-on cost 2+, the rule is aesthetic — which is worth knowing before building anything else.
+**Decision point — resolved for TypeScript, open for everything else.** A permutation baseline
+(shuffle which file sits in which slot, holding tree shape/depth/size fixed, ~200 iterations) run
+against every extracted repo:
+
+| repo | mean cost, real vs. shuffled | cohesion split-rate, real vs. shuffled | verdict |
+| --- | --- | --- | --- |
+| zod | 0.44 vs 1.54 | 50% vs 87% | far better than random |
+| date-fns | 1.04 vs 2.04 | 21% vs 99% | far better than random |
+| vite | 0.39 vs 2.44 | 59% vs 98% | far better than random |
+| tanstack-router | 0.28 vs 1.28 | 50% vs 86% | far better than random |
+| flask / requests / rich | — | — | too few multi-child directories to be informative (1–3 each) |
+
+All four TypeScript repos place files dramatically better than chance, on both axes at once — the
+hypothesis holds everywhere it's actually testable. The Python corpus never got to weigh in: it's
+too shallow, exactly as predicted above and confirmed empirically before any TS data existed. Go
+remains untested (no modern toolchain available yet).
 
 ### Phase 1 — extractors
 
@@ -326,12 +348,20 @@ justifies it.
 - **Public-face detection per language.** Needed for the fractality bit and for barrel handling.
   Go is trivial (exported identifiers); TS needs re-export analysis; Python `__init__.py` is
   convention-dependent.
-- **Monorepos:** analyze per-package or whole? Package boundaries are a strong signal of intended
-  structure and might serve as additional ground truth.
+- **Monorepos:** analyze per-package or whole? Partially answered: tanstack-router's two
+  packages (`router-core`, `react-router`) cruised cleanly with **zero new code** — the generic
+  per-root "alias a package's own name to its root" mechanism built for zod's self-references
+  (`zod/v4`, `zod/v3`) resolved the 59 cross-package edges for free. Still open: path-alias
+  conventions like meridian2's `@/*` → `./src/*` are a distinct problem (no package name involved)
+  and remain unsolved.
 - **Are `min` constraints needed at all,** or only `max` lines/files? A minimum may be doing no
   work once the cost function is in place.
 - **Do symbols matter?** Answered empirically by the phase-2 SCC size distribution, not by
-  argument.
+  argument — but the directory-cohesion metric above already shows the shape of the ceiling:
+  zod's `zsf.ts` (a real placement candidate) and `rich/_unicode_data`'s per-version tables (fully
+  benign) produce the *identical* file-level signature, N disconnected files each reached only
+  from outside. No file-level metric distinguishes them; it needs either symbol resolution or the
+  "naming as validator" idea below.
 - **Adoption posture.** The tool most likely to be used is an advisory metric plus a handful of
   high-confidence moves (the `knip` / `dependency-cruiser` shape), not a formatter. The strongest
   niches are agent-written code (no aesthetic ownership, sprawls badly), greenfield, and monorepo
