@@ -64,30 +64,42 @@ predicted, confirmed with numbers.
 
 Consequences, already acted on:
 
-- **meridian2 is the first repo with real depth**, which is why the sequencing below moves the TS
-  extractor ahead of the report layer — there's no point building histograms and scatter plots
+- **TypeScript is the first place with real depth**, which is why the sequencing below moves the
+  TS extractor ahead of the report layer — there's no point building histograms and scatter plots
   against all-zero data.
 - Two grimp hazards were found in step 3, both of which produced *plausible-looking wrong graphs*
   rather than errors: `sys.modules` shadowing the corpus checkout, and PEP 420 namespace packages
   being silently skipped. **Assume the TS extractor has its own analogues** and budget for hunting
   them (see PR 5a).
 
+**Correction to the original framing (made after step 3, before 5a started):** this doc and
+plan.md previously treated `meridian2` as "the calibration point" — ground truth to validate the
+extractor and the cost model against. That was backwards. `meridian2` is the repo the tool is
+meant to *optimize*; its current layout is the thing under judgment, so it cannot simultaneously
+be the standard the judge is calibrated against. "The tool disagrees with meridian2" is a finding
+about meridian2, not evidence the extractor is wrong. Calibration has to come from repos with an
+independent reputation for being well-structured — which is what the rest of the TS corpus
+(zod, date-fns, vite, TanStack Router) is for. See `plan.md`'s corpus table for the corrected
+framing.
+
 ---
 
 ## Resequenced PR order
 
 plan.md's original order was 4 (metrics + report) → 5 (TS) → 6 (stage 2). Step 4 is split so the
-presentation layer is written *after* there's data worth presenting:
+presentation layer is written *after* there's data worth presenting. **Resequenced a second time**
+after the meridian2 correction above: reference repos (zod, date-fns) come before the optimization
+subject (meridian2), so 5a's target and 6's target swap.
 
 | PR | Scope | Model | Depends on |
 | --- | --- | --- | --- |
 | **4a** | `model/graph.py` + `model/metrics.py` + fixtures | Opus 5 | — |
-| **5a** | TS extractor → meridian2 | Opus 5, plan mode | — |
-| **5b** | meridian2 spot-check against its `CLAUDE.md` | Opus 5 | 5a |
+| **5a** | TS extractor → zod + date-fns | Sonnet 5 | — |
 | **4b** | `report/run.py` + `report/figures.py` + permutation test | Opus 5 | 4a, 5a |
-| **6** | zod + date-fns (barrel-splice delta) | Sonnet 5 | 4b |
+| **6** | meridian2 + workspace alias generalization | Opus 5, plan mode | 4b |
 
-4a and 5a are independent and can be done in either order, or in parallel.
+4a and 5a are independent and can be done in either order, or in parallel. **PR 5b (the old
+"meridian2 spot-check") is dropped as a Phase 0 gate** — see below.
 
 ---
 
@@ -135,55 +147,74 @@ No CLI in this PR.
 
 ---
 
-## PR 5a — TypeScript extractor
+## PR 5a — TypeScript extractor (zod + date-fns)
 
 The hardest piece. Use **dependency-cruiser as a library** (`import { cruise } from 'dependency-cruiser'`),
 not the CLI — the programmatic API takes `tsConfig`, `doNotFollow`, and
 `enhancedResolveOptions.alias` directly.
 
-**Split of responsibilities** (mirrors how the Python extractor works):
+**Scope: zod + date-fns, not meridian2.** Per the correction above, reference repos come first.
+Both are also single-root packages (`packages/zod/src`, `pkgs/core/src`), so this PR avoids the
+cross-workspace alias problem meridian2's `worker/` boundary introduces — that's saved for PR 6,
+once the extractor itself is trusted. Both are barrel-heavy, so the barrel hazard (see below) gets
+exercised immediately rather than deferred.
+
+**Split of responsibilities** (mirrors how the Python extractor works, sharpened): the `.mjs` is a
+dumb adapter — it emits exactly what dependency-cruiser saw, no filtering, no normalization, no
+counting. All policy (root filtering, id normalization, edge dropping, stat counting, `is_barrel`)
+lives in Python as a pure `build_graph(payload, entry) -> Graph`, testable from a synthetic dict
+with no node in the loop.
 
 - `extractors/ts/extract.mjs` — Node script, emits raw JSON: node ids, imports, and which imports
   are `type-only` (`dep.dependencyTypes.includes('type-only')`).
 - `extractors/ts/extract.py` — typer CLI that shells out to the `.mjs`, computes `is_barrel` via
   the **existing** `classify.is_barrel_ts` (Python side reads the sources), and writes the `Graph`.
 
-**meridian2 specifics** (verified in step 0):
+**zod + date-fns specifics (verified by recon against the synced checkouts, not guessed):**
 
-- `tsconfig.app.json` maps `@/*` → `./src/*`; roots are `["src", "worker/src"]`.
-- `worker/` is a separate pnpm workspace package — needs the workspace alias map, or cross-package
-  edges resolve to nothing and the graph is quietly hollow.
-- `src/routeTree.gen.ts` is generated with enormous fan-in. **Do not special-case it in the
-  extractor** — it gets excluded at report time via `--exclude`, per the extract-once principle.
-- **No `pnpm install`.** Only internal edges matter; unresolved external imports are dropped and
-  counted into `Stats.unresolved_imports`. That ratio is the trigger for installing a specific
-  repo later, and the one Stats field the TS extractor actually fills.
+- **No `tsConfig` is passed to `cruise` at all.** Neither repo's tsconfig resolves standalone:
+  zod's needs `customConditions: ["@zod/source"]`, which depends on its own `exports` map — dead
+  without `node_modules`; date-fns's `extends` an uninstalled package and has no `include`. Neither
+  uses `compilerOptions.paths`, so this isn't a loss.
+- **Two `enhancedResolveOptions` are mandatory instead:**
+  - `extensionAlias: { '.js': ['.ts', '.tsx', '.js'] }` — zod (`moduleResolution: NodeNext`)
+    writes 465 relative specifiers as `./foo.js` pointing at `foo.ts`. Without this the zod graph
+    is hollow. date-fns doesn't need it (writes literal `.ts` specifiers) but it's harmless there.
+  - A **package self-reference alias**, derived generically (read each root's nearest
+    `package.json`, alias its `name` to that root): zod has 165 self-referential imports
+    (`zod/v4`, `zod/v3`, `zod/mini`, etc.) that resolve via plain directory-index resolution.
+    Without it, 165 internal edges are silently miscounted as external.
+- **`is_barrel_ts`'s multi-line blind spot doesn't bite here** — no `index.ts` under either root
+  uses a multi-line `export { ... } from`. date-fns's generated `src/index.ts` is a textbook
+  single-line barrel and should be flagged; if it isn't, that's a real regression, not a corpus
+  quirk.
+- **zod is 59% test files** (170 of 286, under `*/tests/*`) — any zod metric read without
+  report-time `--exclude` (PR 4b) is dominated by tests. date-fns has zero.
+- **No `pnpm install`.** Unresolved external imports are dropped and counted into
+  `Stats.unresolved_imports` — the one Stats field the TS extractor actually fills.
 
 **Expected hazards** — step 3 found two silent-wrong-answer bugs in the Python path; look hard for
 the TS equivalents before trusting the first clean run:
 
-- `.ts` / `.tsx` / `.d.ts` / `.mts` extension handling and index resolution.
 - Whether a hollow graph (everything unresolved) still *looks* plausible — check the unresolved
-  ratio, don't just eyeball node count.
-- Node-count-vs-`git ls-files` sanity check, as the Python extractor has.
+  ratio, don't just eyeball node count. **zod is the one to distrust**: it needs both resolver
+  options above, and either one missing produces a graph that still has a normal-looking node
+  count. date-fns needs neither and is the control.
+- Node-count-vs-`git ls-files` sanity check (expect ~286 for zod, ~1494 for date-fns, filtered to
+  the extension allowlist). Note: despite this doc previously claiming the Python extractor has
+  this check in code, it does not — that was a manual step-3 verification, never committed. PR 5a
+  adds it for real.
+- Confirm no `zod/...` specifier lands in `external_imports_dropped` — that's the alias missing,
+  not a genuinely external import.
 
-Ship when meridian2 extracts with an acceptable unresolved ratio and node set matching disk.
+Ship when both repos extract with an acceptable unresolved ratio, node counts matching disk, and
+the zod self-reference / date-fns barrel checks above pass.
 
----
-
-## PR 5b — meridian2 spot-check
-
-meridian2 is the calibration point: its `CLAUDE.md` states the placement rule in prose
-("a file moves into a subdirectory only when every caller already lives in that subdirectory"),
-which is caller-LCA, plus a directory-scope table.
-
-Pull the ten highest-cost edges and read them against that table. Either outcome is informative:
-
-- genuine violations → the metric measures what we think it does;
-- artifacts (alias resolution, the `worker/` boundary, generated files) → an extractor bug caught
-  **before** it contaminates zod, date-fns, vite, and TanStack Router.
-
-Budget for this forcing a rewrite of part of 5a. That's why it's a separate PR.
+**Deferred to once `model/graph.py::splice_barrels` exists (PR 4a):** both repos are heavily
+barrel-based, so splicing should move their cost numbers *a lot*. plan.md requires reporting at
+least one repo both spliced and unspliced. **If the delta is small, that's a bug** — suspect
+`is_barrel_ts` or `splice_barrels`, not the repos. This was previously framed as "PR 6"'s content;
+it now belongs here, since zod/date-fns extraction is 5a's job.
 
 ---
 
@@ -221,25 +252,33 @@ permutation machinery Phase 3 needs anyway.
 
 ---
 
-## PR 6 — zod and date-fns
+## PR 6 — meridian2
 
-Manifest entries already exist and are pinned. Mostly a re-run on working machinery — hence
-Sonnet 5.
+meridian2 is the optimization *subject*, not ground truth (see the correction at the top of this
+doc), and it needs the workspace alias map (`worker/` is a separate pnpm package) generalized
+beyond a single-root package — the thing 5a's zod/date-fns scope deliberately deferred. Also
+carries `tsconfig.app.json`'s `@/*` → `./src/*` mapping, and `src/routeTree.gen.ts` (generated,
+enormous fan-in — **do not special-case it in the extractor**, exclude at report time via
+`--exclude` instead, per the extract-once principle).
 
-The real content is the **barrel-splice delta**: both repos are heavily barrel-based, so splicing
-should move their numbers *a lot*. plan.md requires reporting at least one repo both ways. **If the
-delta is small, that's a bug**, not a finding — suspect `is_barrel_ts` or `splice_barrels` and
-escalate to Opus 5.
+**What replaces the old "5b spot-check":** pulling meridian2's highest-cost edges and reading them
+against its `CLAUDE.md` invariants is still worth doing, but it is no longer an *extractor
+validation* step — that job belongs to 5a's hazard checks against zod/date-fns, which have no
+circularity problem. A disagreement between the tool and meridian2 is now a candidate *finding
+about meridian2* (a placement recommendation), to be judged once the placement engine exists (see
+plan.md's "Later" phase) — not a bug signal about the cost model.
 
-Note `date-fns` has restructured since plan.md was written: it's a pnpm monorepo now, and the
-manifest points at `pkgs/core/src`.
+Note `date-fns` has restructured since plan.md was written: it's a pnpm monorepo now, and its
+manifest entry points at `pkgs/core/src` — noted here since PR 6 is the first place the workspace
+alias work is generalized, and `date-fns` (extracted in 5a) is not itself a monorepo case worth
+revisiting.
 
 ---
 
-## After step 6
+## After PR 6
 
-Not covered in detail here: **vite + TanStack Router** (needs the workspace alias map generalized
-beyond meridian2's single `worker/` package), then **`FINDINGS.md`** and the Phase 1 go/no-go.
+Not covered in detail here: **vite + TanStack Router**, which reuse the workspace alias map PR 6
+generalizes for meridian2's `worker/` boundary, then **`FINDINGS.md`** and the Phase 1 go/no-go.
 
 That last one is a reading exercise, not a coding one — and it should be done with a human in the
 loop, since it has to weigh whether the missing Go control changes the verdict.
@@ -252,6 +291,7 @@ loop, since it has to weigh whether the missing Go control changes the verdict.
   ambiguous, the honest options are to run Go after all (needs a modern toolchain) or to widen the
   TS corpus — not to over-read three shallow Python repos.
 - **Barrel splicing is unvalidated at scale.** One barrel exists across all of Python (flask's
-  `__init__.py`). The transform is effectively untested against real data until PR 6.
+  `__init__.py`). The transform is effectively untested against real data until it runs against
+  the barrel-heavy zod/date-fns graphs 5a produces (see the deferred note in PR 5a).
 - **`is_barrel_ts` is lexical**, not type-aware: it can miss a barrel with a side effect and
   over-flag a file whose statements happen to all be re-exports. Counted, not assumed away.

@@ -1,0 +1,9 @@
+{
+  "name": "dep-structure-linter-ts-extractor",
+  "private": true,
+  "description": "dependency-cruiser wrapper invoked as a subprocess by extract.py",
+  "dependencies": {
+    "dependency-cruiser": "^18.1.1",
+    "typescript": "^5.9.3"
+  }
+}

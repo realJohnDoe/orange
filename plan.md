@@ -294,12 +294,16 @@ Chosen to span entrypoint count and call-graph depth. Pin commits.
 | zod                          | TS     | wide public API, concentrated core                          |
 | vite                         | TS     | tool/monorepo, few effective entrypoints, deep              |
 | TanStack Router              | TS     | monorepo, output judgeable by eye                           |
-| **meridian2**                | TS     | the one repo where the intended structure is known          |
+| **meridian2**                | TS     | the optimization target, not a reference repo                |
 
 `date-fns` is the important TS pick — it is the lodash shape in a TS-native codebase, so it
-probes the flattening case directly. `meridian2` is the calibration point: its `CLAUDE.md`
-states the intended invariants explicitly, so disagreements are interpretable rather than
-merely numeric.
+probes the flattening case directly.
+
+**`meridian2` is the subject, not ground truth.** It is the repo we intend to restructure, so its
+current layout is the thing being judged — it cannot also be the standard that calibrates the
+judge. Its `CLAUDE.md` states intended invariants, which makes disagreements *interpretable*, but
+"the tool disagrees with meridian2" is a finding about meridian2, not evidence the tool is wrong.
+Calibration has to come from the well-regarded reference repos above.
 
 ---
 

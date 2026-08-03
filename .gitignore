@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
 
 # pinned corpus checkouts — regenerate via corpus/sync.py; graphs are the checked-in artifact
 corpus/checkouts/
