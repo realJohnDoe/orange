@@ -133,6 +133,33 @@ def test_build_graph_counts_unresolved_and_external_separately(tmp_path: Path) -
     assert graph.stats.external_imports_dropped == 2
 
 
+def test_build_graph_does_not_crash_on_a_resolved_target_outside_the_checkout(
+    tmp_path: Path,
+) -> None:
+    """Regression: vite's test suite has a type-only import resolving into
+    `../../../../../dist/node/module-runner` -- its own never-built output.
+    dependency-cruiser reports couldNotResolve=False (it resolves the path
+    syntactically) even though no such file exists. That must be dropped as
+    an external reference, not raise from the in-scope-only `..` invariant.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.ts").write_text("import type { X } from '../../../dist/x';\n")
+    entry = make_entry(roots=("src",))
+    payload = {
+        "modules": [
+            module(
+                "src/a.ts",
+                [dep("../../../dist/x", type_only=True)],
+            )
+        ]
+    }
+
+    graph = build_graph(payload, entry, tmp_path)
+
+    assert graph.nodes[0].imports == ()
+    assert graph.stats.external_imports_dropped == 1
+
+
 def test_build_graph_keeps_edges_between_kept_nodes(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.ts").write_text("import './b.js';\n")

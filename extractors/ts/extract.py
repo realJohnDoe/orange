@@ -52,23 +52,41 @@ _ALLOWED_EXTENSIONS = (
 )
 
 
+def _slashify(path: str) -> str:
+    """Forward-slash form of a dependency-cruiser path, no invariants enforced.
+
+    Safe to call on *any* string the worker emits, including ones that will
+    turn out to be out of scope -- see _norm for why that distinction matters.
+    """
+    return path.replace("\\", "/")
+
+
 def _norm(path: str) -> str:
-    """Repo-root-relative POSIX path, defensively normalized.
+    """Repo-root-relative POSIX path, with invariants enforced.
+
+    Call this only on a path already confirmed in-scope (i.e. about to become
+    a real Node). A path can legitimately contain `..` or be nonsensical
+    relative to baseDir when it's *out* of scope -- e.g. vite's own test
+    suite has a type-only import reaching into `../../../../../dist/...`, its
+    own never-built output. dependency-cruiser resolves that syntactically
+    (couldNotResolve is false) even though no such file exists in a shallow
+    checkout. That's an external reference to be dropped and counted, not a
+    bug -- so the strict checks only apply once something is known in-scope.
 
     dependency-cruiser already emits forward slashes on win32 in practice
-    (verified against the real zod/date-fns checkouts), so this is a cheap
-    invariant rather than a load-bearing conversion. Deliberately not
-    `PurePath`/`Path`: that class is OS-dispatched (PureWindowsPath on
-    Windows, PurePosixPath on Linux), so `.as_posix()` on a backslash string
-    is a no-op on the ubuntu-latest CI runner -- the same trap
-    model/paths.py's docstring calls out for using PurePosixPath explicitly.
+    (verified against the real zod/date-fns checkouts), so the slash
+    conversion here is a cheap invariant rather than a load-bearing one.
+    Deliberately not `PurePath`/`Path`: that class is OS-dispatched
+    (PureWindowsPath on Windows, PurePosixPath on Linux), so `.as_posix()` on
+    a backslash string is a no-op on the ubuntu-latest CI runner -- the same
+    trap model/paths.py's docstring calls out for using PurePosixPath
+    explicitly.
     """
-    posix = path.replace("\\", "/")
-    parts = PurePosixPath(posix).parts
+    posix = _slashify(path)
     if PurePosixPath(posix).is_absolute():
         raise ValueError(f"expected a repo-relative path, got {path!r}")
-    if ".." in parts:
-        raise ValueError(f"path escapes its root: {path!r}")
+    if ".." in PurePosixPath(posix).parts:
+        raise ValueError(f"in-scope path escapes its root: {path!r}")
     return posix
 
 
@@ -88,21 +106,18 @@ def _run_worker(checkout: Path, roots: tuple[str, ...]) -> dict:
 
 def build_graph(payload: dict, entry: RepoEntry, checkout: Path) -> Graph:
     def in_scope(node_id: str) -> bool:
-        return _has_allowed_extension(node_id) and any(
-            node_id == root or node_id.startswith(f"{root}/") for root in entry.roots
+        slashed = _slashify(node_id)
+        return _has_allowed_extension(slashed) and any(
+            slashed == root or slashed.startswith(f"{root}/") for root in entry.roots
         )
 
-    kept_ids = {
-        _norm(mod["source"])
-        for mod in payload["modules"]
-        if in_scope(_norm(mod["source"]))
-    }
+    kept_ids = {_norm(mod["source"]) for mod in payload["modules"] if in_scope(mod["source"])}
 
     unresolved = 0
     external_dropped = 0
     nodes: list[Node] = []
     for mod in payload["modules"]:
-        source = _norm(mod["source"])
+        source = _slashify(mod["source"])
         if source not in kept_ids:
             continue
 
@@ -111,6 +126,9 @@ def build_graph(payload: dict, entry: RepoEntry, checkout: Path) -> Graph:
         for dep in mod["dependencies"]:
             if dep["couldNotResolve"]:
                 unresolved += 1
+                continue
+            if not in_scope(dep["resolved"]):
+                external_dropped += 1
                 continue
             target = _norm(dep["resolved"])
             if target not in kept_ids:
