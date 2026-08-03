@@ -1,10 +1,16 @@
-"""Path arithmetic underlying the cost function in plan.md.
+"""Path arithmetic underlying the *integer* cost function in plan.md.
 
-cost(u -> v) is defined there as the number of containers strictly between
-LCA(u, v) and v. For concrete file paths that reduces to pure path arithmetic:
-the number of directory components of v that lie beyond the longest common
-prefix of u's and v's directory components. No face detection is needed to
-compute it — see the verification table in the Phase 0 plan.
+cost(u -> v) is the number of containers strictly between LCA(u, v) and v. For
+concrete file paths that reduces to pure path arithmetic: the number of
+directory components of v that lie beyond the longest common prefix of u's and
+v's directory components. No face detection is needed to compute it — see the
+cost table in plan.md, which tests/test_paths.py pins verbatim.
+
+This is plan.md's *reporting* view, not its objective. The objective is the bit
+cost, which charges log2(branching) per selection from the LCA down to and
+including v itself; it is a function of the whole tree rather than of two
+strings, so it does not belong in this module's pure-path-arithmetic shape and
+takes the branching data explicitly. See plan.md, PR 4a.
 """
 
 from __future__ import annotations
