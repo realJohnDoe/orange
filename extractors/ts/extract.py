@@ -14,9 +14,9 @@ this extractor fills that the Python extractor never needed (grimp always
 resolves-or-classifies-external; dependency-cruiser without node_modules
 genuinely fails to resolve some specifiers).
 
-Two enhanced-resolve options are load-bearing (see plan.md / plans/steps-4-6.md
-for how these were discovered against zod specifically, but both are applied
-generically, not as a zod special case):
+Two enhanced-resolve options are load-bearing (see plan.md's "What we've
+learned" for how these were discovered against zod specifically, but both are
+applied generically, not as a zod special case):
   - extensionAlias: NodeNext-style TS writes `./foo.js` pointing at `foo.ts`.
   - a package self-reference alias, derived per root from the nearest
     package.json's "name" field: a package importing its own name (`zod/v4`)

@@ -1,7 +1,8 @@
-"""Pins the cost function against the worked table in plan.md.
+"""Pins the integer cost function against the worked table in plan.md.
 
-If this drifts, every metric downstream is wrong -- see the Phase 0 plan's
-Verification section.
+If this drifts, every metric downstream is wrong. The table's "Integer cost"
+column is the contract; the bit-cost column alongside it is the objective and
+is pinned separately once model/paths.py grows bit_cost (plan.md, PR 4a).
 """
 
 import pytest
