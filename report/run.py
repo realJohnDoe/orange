@@ -1,0 +1,246 @@
+"""report/run.py -- one report variant per invocation.
+
+    uv run python -m report.run --output report/out/all
+    uv run python -m report.run --output report/out/no-tests \\
+        --exclude '**/*.test.ts' --exclude '**/__tests__/**' --exclude '**/test_*.py'
+
+Rather than sweeping variants internally, each invocation applies one set of
+--exclude / --splice-barrels / --lang / --repo choices to every graph it loads
+and writes the results under --output. This is what "extract once, filter in
+analysis" (plan.md) looks like at the report layer: the checked-in graphs
+never change, and comparing "all" vs. "no-tests" is comparing two directories.
+
+--exclude fixes the two confounds recorded in plan.md's "What we've learned":
+zod is 59% test files, and date-fns's 937 single-file directories are a
+filename convention rather than real containment. Nothing before this CLI
+could remove either from a measurement.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated, Any
+
+import typer
+
+from corpus.sync import load_manifest
+from extractors.classify import is_face
+from extractors.schema import Graph, load
+from model.graph import filter_nodes
+from model.graph import splice_barrels as splice_all_barrels
+from model.metrics import DEFAULT_C, all_metrics, edges
+from model.paths import bit_cost, branching, common_prefix_len, cost, dirs
+
+GRAPHS_DIR = Path(__file__).resolve().parents[1] / "corpus" / "graphs"
+
+# A repo whose unresolved-import ratio exceeds this is a data-quality problem,
+# not the normal noise of external packages the TS extractor can't resolve
+# without node_modules: every repo in plan.md's "Validation numbers" sits
+# under 30%, while the mis-pinned-typescript hazard that silently zeroed out
+# all .ts parsing (plan.md, "What we've learned" #1) would show up near 100%.
+UNRESOLVED_RATIO_THRESHOLD = 0.5
+
+
+def load_graphs(lang: str | None, repos: list[str]) -> list[Graph]:
+    """Every extracted graph matching --lang/--repo, in manifest order.
+
+    Silently skips manifest entries with no corpus/graphs/<repo>.json.gz --
+    meridian2 is in the manifest but not yet extracted (PR 6).
+    """
+    entries = load_manifest()
+    if lang is not None:
+        entries = [e for e in entries if e.lang == lang]
+    if repos:
+        wanted = set(repos)
+        entries = [e for e in entries if e.name in wanted]
+    graphs = []
+    for entry in entries:
+        path = GRAPHS_DIR / f"{entry.name}.json.gz"
+        if path.is_file():
+            graphs.append(load(path))
+    return graphs
+
+
+def unresolved_ratio(graph: Graph) -> float | None:
+    """Fraction of import statements the extractor saw but could not resolve.
+
+    Matches extractors/ts/extract.py's own ratio: against raw import
+    *statements* (a node's imports before edges() dedupes them), since that is
+    what Stats.unresolved_imports counts against.
+    """
+    seen = sum(len(n.imports) for n in graph.nodes)
+    total = seen + graph.stats.unresolved_imports
+    return graph.stats.unresolved_imports / total if total else None
+
+
+@dataclass(frozen=True, slots=True)
+class WorstEdge:
+    repo: str
+    source: str
+    target: str
+    integer_cost: int
+    bit_cost: float
+    gateway: str
+    face_hit: bool
+
+
+def worst_edges(graph: Graph, tree: dict[tuple[str, ...], int], top_n: int) -> list[WorstEdge]:
+    """The top_n edges by bit cost, gateway and face-hit computed the same way
+    as model.metrics.cross_face_entries so the two numbers agree."""
+    rows = []
+    for u, v, _ in edges(graph):
+        dv = dirs(v)
+        k = common_prefix_len(dirs(u), dv)
+        gateway = ""
+        face_hit = False
+        if len(dv) - k >= 1:
+            gateway_tuple = dv[: k + 1]
+            gateway = "/".join(gateway_tuple)
+            face_hit = dv == gateway_tuple and is_face(v, graph.lang)
+        rows.append(
+            WorstEdge(
+                repo=graph.repo,
+                source=u,
+                target=v,
+                integer_cost=cost(u, v),
+                bit_cost=bit_cost(u, v, tree),
+                gateway=gateway,
+                face_hit=face_hit,
+            )
+        )
+    rows.sort(key=lambda r: r.bit_cost, reverse=True)
+    return rows[:top_n]
+
+
+def build_report(graph: Graph, c: float, top_n: int) -> tuple[dict[str, Any], list[WorstEdge]]:
+    """all_metrics() plus the unresolved-ratio flag, and this graph's worst edges."""
+    metrics = all_metrics(graph, c)
+    ratio = unresolved_ratio(graph)
+    metrics["unresolved_ratio"] = ratio
+    metrics["flagged"] = ratio is not None and ratio > UNRESOLVED_RATIO_THRESHOLD
+    tree = branching(graph)
+    return metrics, worst_edges(graph, tree, top_n)
+
+
+# name, extractor -- every summary.csv / summary.md column, in display order.
+_SUMMARY_COLUMNS: tuple[tuple[str, Any], ...] = (
+    ("repo", lambda m: m["repo"]),
+    ("lang", lambda m: m["lang"]),
+    ("nodes", lambda m: m["nodes"]),
+    ("edges", lambda m: m["total_bit_cost"]["edges"]),
+    ("cost_0", lambda m: m["cost_histogram"]["all"]["fractions"]["0"]),
+    ("cost_1", lambda m: m["cost_histogram"]["all"]["fractions"]["1"]),
+    ("cost_2", lambda m: m["cost_histogram"]["all"]["fractions"]["2"]),
+    ("cost_3+", lambda m: m["cost_histogram"]["all"]["fractions"]["3+"]),
+    ("mean_integer_cost", lambda m: m["integer_edge_cost"]["mean"]),
+    ("bits_per_edge", lambda m: m["total_bit_cost"]["bits_per_edge"]),
+    ("compression_ratio", lambda m: m["total_bit_cost"]["compression_ratio"]),
+    ("split_rate", lambda m: m["directory_cohesion"]["split_rate"]),
+    ("genuine_split_rate", lambda m: m["directory_cohesion"]["genuine_split_rate"]),
+    ("depth_informative", lambda m: m["depth_histogram"]["informative"]),
+    ("rho_fanin_ge_1", lambda m: m["depth_vs_fanin"]["rho_fanin_ge_1"]),
+    ("unresolved_ratio", lambda m: m["unresolved_ratio"]),
+    ("flagged", lambda m: m["flagged"]),
+)
+
+
+def _fmt(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def write_summary_csv(rows: list[dict[str, Any]], path: Path) -> None:
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(name for name, _ in _SUMMARY_COLUMNS)
+        for row in rows:
+            writer.writerow(_fmt(getter(row)) for _, getter in _SUMMARY_COLUMNS)
+
+
+def write_summary_md(rows: list[dict[str, Any]], path: Path, c: float) -> None:
+    lines = [
+        f"# Report summary (C = {c})",
+        "",
+        f"Repos above the unresolved-import threshold ({UNRESOLVED_RATIO_THRESHOLD:.0%}) are "
+        "flagged rather than silently averaged in.",
+        "",
+        "| " + " | ".join(name for name, _ in _SUMMARY_COLUMNS) + " |",
+        "| " + " | ".join("---" for _ in _SUMMARY_COLUMNS) + " |",
+    ]
+    for row in rows:
+        cells = [_fmt(getter(row)) for _, getter in _SUMMARY_COLUMNS]
+        lines.append("| " + " | ".join(cells) + " |")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_worst_edges_csv(worst: list[WorstEdge], path: Path) -> None:
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["repo", "source", "target", "integer_cost", "bit_cost", "gateway", "face_hit"]
+        )
+        for w in worst:
+            writer.writerow(
+                [w.repo, w.source, w.target, w.integer_cost, f"{w.bit_cost:.4f}", w.gateway, w.face_hit]
+            )
+
+
+def main(
+    output: Annotated[Path, typer.Option(help="directory for this run's artifacts")],
+    exclude: Annotated[
+        list[str],
+        typer.Option(help="glob of node ids to drop from the graph entirely; repeatable"),
+    ] = [],
+    splice_barrels: Annotated[
+        bool,
+        typer.Option(help="rewire edges through barrel files to their real target"),
+    ] = True,
+    lang: Annotated[
+        str | None, typer.Option(help="only include repos in this language (py, ts)")
+    ] = None,
+    repo: Annotated[
+        list[str],
+        typer.Option(help="only include these repos; repeatable (default: every extracted repo)"),
+    ] = [],
+    c: Annotated[
+        float, typer.Option(help="bits a container must save to justify existing")
+    ] = DEFAULT_C,
+    top_n: Annotated[int, typer.Option(help="worst-cost edges to record per repo")] = 20,
+) -> None:
+    graphs = load_graphs(lang, repo)
+    if not graphs:
+        raise typer.BadParameter("no extracted graphs matched --lang/--repo")
+
+    output.mkdir(parents=True, exist_ok=True)
+    summary_rows: list[dict[str, Any]] = []
+    all_worst: list[WorstEdge] = []
+    for graph in graphs:
+        g = filter_nodes(graph, exclude)
+        if splice_barrels:
+            g = splice_all_barrels(g)
+        metrics, worst = build_report(g, c, top_n)
+        summary_rows.append(metrics)
+        all_worst.extend(worst)
+        (output / f"{g.repo}.json").write_text(
+            json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        flag = " [FLAGGED]" if metrics["flagged"] else ""
+        print(
+            f"{g.repo:16} {metrics['nodes']:5} nodes "
+            f"{metrics['total_bit_cost']['edges']:5} edges{flag}"
+        )
+
+    summary_rows.sort(key=lambda m: m["repo"])
+    write_summary_csv(summary_rows, output / "summary.csv")
+    write_summary_md(summary_rows, output / "summary.md", c)
+    write_worst_edges_csv(all_worst, output / "worst-edges.csv")
+
+
+if __name__ == "__main__":
+    typer.run(main)

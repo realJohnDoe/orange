@@ -345,7 +345,7 @@ status quo by a landslide.
 | `corpus/graphs/` | `flask`, `requests`, `rich`, `zod`, `date-fns`, `vite`, `tanstack-router` — checked in, deterministic. `meridian2` not yet extracted (PR 6). |
 | `model/graph.py` | `filter_nodes()`, `splice_barrels()`, `value_edges_only()` — pure transforms returning new `Graph`s. |
 | `model/metrics.py` | Every PR 4a metric, one function per metric returning a dict, plus `all_metrics()`. `DEFAULT_C = 8.0`, provisional until 4c. |
-| `report/` | **Does not exist yet.** PR 4b builds it. |
+| `report/run.py` | Typer CLI, one invocation per variant. `--exclude` (repeatable glob), `--splice-barrels/--no-splice-barrels`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
 
 ### Schema, as actually built
 
@@ -454,8 +454,9 @@ pattern as `rich/_unicode_data` (independent test files or per-locale data). vit
 surfaced 3 "genuine" splits — directories where the odd-one-out is a second real *cluster* of ≥2
 files, not a lone singleton.
 
-**Two known confounds in every number quoted above** — not yet corrected because `--exclude`
-doesn't exist yet (PR 4b):
+**Two known confounds in every number quoted above** — present in the raw corpus, and now
+correctable with `report/run.py --exclude` (PR 4b; see "Confound correction" under Phase 0 results
+below for the corrected zod/vite numbers):
 
 - zod is 59% test files (170 of 286, under `*/tests/*`). Nearly every zod cohesion "split" is a
   test directory, which is structurally guaranteed to look incohesive (tests depend on their
@@ -521,6 +522,35 @@ hypothesis holds everywhere it's actually testable. The Python corpus never got 
 too shallow, exactly as predicted and confirmed empirically before any TS data existed. Go remains
 untested (no modern toolchain available yet).
 
+**Confound correction (PR 4b), real numbers only.** `report/run.py` now exists, so the two known
+confounds above can actually be removed rather than just named. Re-running with
+`--exclude '**/*.test.ts' --exclude '**/tests/**' --exclude '**/__tests__/**' --exclude
+'**/test_*.py'`, unspliced, to stay comparable with the table above:
+
+| repo | nodes, all vs. no-tests | mean cost, all vs. no-tests | split-rate, all vs. no-tests |
+| --- | --- | --- | --- |
+| zod | 286 vs. 116 | 0.44 vs. 0.53 | 50% vs. 33% |
+| vite | 396 vs. 141 | 0.39 vs. 0.40 | 59% vs. 71% |
+| date-fns | 1495 vs. 1495 | 1.04 vs. 1.04 | 21% vs. 21% |
+| tanstack-router | 116 vs. 116 | 0.28 vs. 0.28 | 50% vs. 50% |
+
+date-fns and tanstack-router are unchanged — neither has files matching these globs inside its
+analyzed root, so they were never carrying the test confound to begin with. zod and vite are not:
+dropping zod's 170 test files raises its mean cost (tests colocated with their subject were mostly
+free, cost-0 edges, and pulled the average down) while *lowering* its cohesion split-rate from 50%
+to 33% — confirming the predicted mechanism exactly ("nearly every zod cohesion split is a test
+directory"). Once test placement stops being counted as a directory split, zod's real code is
+*more* cohesive than the raw number suggested, not less. vite moves the same two ways for the same
+reason, more mildly.
+
+**What this does not yet do: re-run the "vs. shuffled" comparison.** The permutation baseline that
+produced the shuffled column above is still the throwaway, unported `baseline.py` logic — porting
+it into real code is PR 4d's job, not 4b's, and no shuffled numbers exist yet for the excluded-test
+graphs. So this correction updates the *real* half of the table only. zod's mean cost moving toward
+the shuffled baseline (0.53 vs. a shuffled 1.54) is suggestive that the margin survives, but "far
+better than random" for the corrected corpus is a claim for 4d to actually verify, not one this PR
+is entitled to make.
+
 **Caveat that motivates PR 4c:** random is a weak opponent. Beating a shuffle says the layout is
 not arbitrary; it does not say the layout is *good*. The demanding version is local optimality —
 for each file, does moving it to any other existing directory reduce total cost? — and that is
@@ -534,11 +564,11 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **4b** — `report/run.py` with `--exclude` | Removes the confounds distorting every number above | Sonnet 5 | not started |
-| 2 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
-| 3 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
-| 4 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| 1 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
+| 2 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
+| 3 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
 | — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
+| — | **4b** — `report/run.py` with `--exclude` | — | Sonnet 5 | **done** |
 | — | **5a** — TS extractor → zod, date-fns, vite, tanstack-router | — | Sonnet 5 | **done** |
 
 Deferred and explicitly scoped: **symbol-level extraction** (see "Symbol level" below). It is the
@@ -566,36 +596,62 @@ The acceptance checks are tests, not prose: `tests/test_corpus_metrics.py` pins 
 histograms, the four Phase 0 means, and the four cohesion split-rates against the checked-in
 corpus, so any future change to the edge set or the splice has to answer for them.
 
-### PR 4b — report and `--exclude`
+### PR 4b — as built
 
-**`report/run.py`** — typer CLI. **One invocation per variant**, with an `--output` directory,
-rather than an internal variant sweep.
+Shipped as specified, one deviation on scope:
+
+**`report/run.py`** — typer CLI. **One invocation per variant**, with a required `--output`
+directory, rather than an internal variant sweep:
 
 ```
 uv run python -m report.run --output report/out/all
 uv run python -m report.run --output report/out/no-tests \
-    --exclude '**/*.test.ts' --exclude '**/__tests__/**' --exclude '**/test_*.py'
+    --exclude '**/*.test.ts' --exclude '**/tests/**' --exclude '**/__tests__/**' \
+    --exclude '**/test_*.py'
 ```
 
-- `--exclude PATTERN` — repeatable glob; drops nodes from the graph entirely. **Not optional
-  polish**: zod's 59% test contamination and date-fns's single-file-directory convention distort
-  every number in "What we've learned" and in the Phase 0 results, and this flag is the only fix.
-  Named `--exclude`, not `--ignore`, deliberately. Across linters `ignore` overwhelmingly means
-  "process it but suppress findings" (`eslint-disable`, `# noqa`, ruff's `per-file-ignores`) and
-  usually takes *rule codes* rather than paths, while `exclude` means "don't look at it at all"
-  (ruff, flake8, black, mypy, `tsconfig`). This flag deletes nodes from the graph, so `exclude` is
-  the accurate word — and `--freeze` in 4c is the one that means "keep it, don't flag it," so
-  naming this one `--ignore` would invert both against convention.
-- `--output DIR` — where this run's artifacts land.
-- `--splice-barrels / --no-splice-barrels`, plus `--lang` / `--repo` filters.
-- Emits `summary.md`, `summary.csv`, per-repo metric JSON, and `worst-edges.csv` (top-N highest bit
-  cost edges with source, target, both costs, gateway dir, whether the entry hit a face).
-- Repos whose unresolved ratio exceeds a threshold get **flagged in the table**, not silently
-  averaged in.
+(On Windows, prefer calling `report.run.main()` from Python directly, or an escape that survives
+Click's win32 argument-globbing, over passing `**` patterns straight through Git Bash/cmd — Click
+expands glob-looking arguments against the cwd on that platform before the CLI ever sees them.
+`uv run pytest` calls `main()` directly and is unaffected; CI runs on `ubuntu-latest` and is also
+unaffected.)
 
-Re-run the Phase 0 permutation numbers with tests excluded and update the results table above. If
-zod's advantage over random largely survives, the headline result stands; if it collapses, that is
-the most important finding in the project so far and everything downstream reorders.
+- `--exclude PATTERN` — repeatable glob; drops nodes from the graph entirely via
+  `model.graph.filter_nodes`. **Not optional polish**: zod's 59% test contamination and
+  date-fns's single-file-directory convention distort every number in "What we've learned" and in
+  the Phase 0 results, and this flag is the only fix. Named `--exclude`, not `--ignore`,
+  deliberately: across linters `ignore` overwhelmingly means "process it but suppress findings"
+  (`eslint-disable`, `# noqa`, ruff's `per-file-ignores`) and usually takes *rule codes* rather
+  than paths, while `exclude` means "don't look at it at all" (ruff, flake8, black, mypy,
+  `tsconfig`). This flag deletes nodes from the graph, so `exclude` is the accurate word — and
+  `--freeze` in 4c is the one that means "keep it, don't flag it," so naming this one `--ignore`
+  would invert both against convention.
+- `--output DIR` — where this run's artifacts land.
+- `--splice-barrels / --no-splice-barrels` (default on), plus `--lang` and repeatable `--repo`
+  filters, plus `--c` (default `DEFAULT_C`) and `--top-n` (default 20, worst edges per repo).
+- Emits `summary.md`, `summary.csv`, one `<repo>.json` per repo (`all_metrics()` plus
+  `unresolved_ratio` and `flagged`), and one combined `worst-edges.csv` (top-N per repo by bit
+  cost, with source, target, integer cost, bit cost, gateway dir, and whether the entry hit a
+  face — computed the same way as `cross_face_entries` so the two agree).
+- Repos whose unresolved ratio exceeds `UNRESOLVED_RATIO_THRESHOLD = 0.5` get **flagged** in
+  `summary.csv`/`summary.md` rather than silently averaged in. 50% is deliberately above every
+  repo actually in the corpus (11–28%, see "Validation numbers") — this is a gate against
+  catastrophic breakage like the mis-pinned `typescript` peer dependency (hazard 1), not a
+  judgment about normal external-import noise.
+
+**Deviation from spec: the permutation re-run is real numbers only, not "real vs. shuffled."** The
+spec's acceptance line ("re-run the Phase 0 permutation numbers with tests excluded") assumed the
+shuffled-baseline machinery would already exist; it doesn't — porting the throwaway
+`baseline.py` logic into real code is explicitly PR 4d's job. What 4b *can* and does answer: how do
+the real (non-shuffled) numbers move once `--exclude` removes the test confound? See "Confound
+correction (PR 4b)" under Phase 0 results. The "vs. shuffled" comparison for the corrected corpus
+is unverified until 4d ports the permutation harness — noted there as an open item, not silently
+assumed to still hold.
+
+`tests/test_report.py` covers `--exclude`/`--repo`/`--lang` filtering, the unresolved-ratio flag,
+worst-edge ranking and gateway/face-hit classification (against `plan_md_tree()`, so the expected
+values are the same six edges as the cost table), the CSV/Markdown writers, and an end-to-end
+`main()` run against the real corpus (zod's node count actually drops under a test-exclude glob).
 
 ### PR 4c — local optimality and calibration of `C`
 
@@ -818,8 +874,10 @@ blind spot.
   chance on both axes — but no repo tests the "integer cost > 1 is nearly impossible by
   construction" Go case, which was meant to be the answer key for the visibility rule specifically.
   Get a modern Go toolchain, or accept that the verdict rests on TS alone.
-- **The Phase 0 numbers are uncorrected.** zod's 59% tests and date-fns's single-file directories
-  contaminate every published figure. PR 4b fixes this and may move the headline.
+- **The Phase 0 permutation ("vs. shuffled") numbers are still uncorrected.** PR 4b's `--exclude`
+  fixed the *real*-side numbers for zod and vite (see "Confound correction" under Phase 0 results);
+  the shuffled-baseline comparison against the corrected corpus still needs PR 4d's permutation
+  port before "far better than random" can be re-claimed for it.
 - **The bit cost is unvalidated.** Every empirical result so far is on the integer cost. The bit
   cost is better-motivated but has produced no numbers; if 4c finds `C` doesn't calibrate, the
   model reverts to needing external size bounds and this document's central argument weakens.

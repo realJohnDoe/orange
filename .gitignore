@@ -6,3 +6,7 @@ node_modules/
 
 # pinned corpus checkouts — regenerate via corpus/sync.py; graphs are the checked-in artifact
 corpus/checkouts/
+
+# report/run.py output — regenerate via report/run.py, not a checked-in artifact
+report/out/*
+!report/out/.gitkeep
