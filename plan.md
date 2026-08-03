@@ -336,14 +336,16 @@ status quo by a landslide.
 
 | Module | State |
 | --- | --- |
-| `model/paths.py` | `dirs()`, `lca()`, `cost()` — integer cost only. Semantics pinned against the cost table above in `tests/test_paths.py`. |
+| `model/paths.py` | `dirs()`, `lca()`, `cost()` (integer), `child_of()`, `branching()`, `bit_cost()`. Both cost columns of the table above are pinned in `tests/test_paths.py`, as is split-neutrality. |
 | `extractors/schema.py` | `Graph` / `Node` / `Stats`, gzip JSON read/write, self-validating. |
 | `extractors/classify.py` | `is_face(path, lang)`, `is_barrel_py(source)`, `is_barrel_ts(source)`. |
 | `extractors/python/` | grimp-based extractor + isolated `grimp_worker.py`. |
 | `extractors/ts/` | dependency-cruiser-based extractor (`extract.mjs` + `extract.py`). |
 | `corpus/sync.py` | Pinned shallow checkouts, `--lang` filter. |
 | `corpus/graphs/` | `flask`, `requests`, `rich`, `zod`, `date-fns`, `vite`, `tanstack-router` — checked in, deterministic. `meridian2` not yet extracted (PR 6). |
-| `model/graph.py`, `model/metrics.py`, `report/` | **Do not exist yet.** PR 4a/4b build these. |
+| `model/graph.py` | `filter_nodes()`, `splice_barrels()`, `value_edges_only()` — pure transforms returning new `Graph`s. |
+| `model/metrics.py` | Every PR 4a metric, one function per metric returning a dict, plus `all_metrics()`. `DEFAULT_C = 8.0`, provisional until 4c. |
+| `report/` | **Does not exist yet.** PR 4b builds it. |
 
 ### Schema, as actually built
 
@@ -466,6 +468,39 @@ doesn't exist yet (PR 4b):
   confound but a *finding*: `log2(1) = 0`, so those directories carry no addressing information
   and cost `C` each.)
 
+**Edges are per import *statement*, and must be deduplicated before measuring.** Found while
+reproducing the recorded numbers in real code: a file that imports the same module twice — once
+as `import type`, once for a value — appears twice in `imports`, and `type_only` records only the
+type-only occurrence. That is a fact about the source text, not two dependencies. zod carries 7
+such duplicates, tanstack-router 71 (17% of its edges, nearly all `react-router → router-core`).
+Deduplicating is what makes the shipped code land on the recorded means exactly (0.44 / 1.04 /
+0.39 / 0.28) rather than 1–7% above them, so the ad-hoc scripts must have done the same. It is
+done in `metrics.edges()` rather than at extraction, per extract-once: the cached graphs stay a
+faithful record of what the extractor saw. An edge counts as type-only only when *every*
+statement behind it is, since one value import is a real value dependency.
+
+**First bit-cost numbers, at the provisional `C = 8`, unspliced and unfiltered** — a baseline to
+compare against once 4b removes the confounds, not yet evidence of anything:
+
+| repo | bits/edge | H(v\|u) floor | compression ratio | containers |
+| --- | --- | --- | --- | --- |
+| zod | 4.89 | 1.77 | 2.76 | 20 |
+| date-fns | 7.58 | 2.65 | 2.86 | 1296 |
+| vite | 5.60 | 2.88 | 1.94 | 132 |
+| tanstack-router | 5.56 | 2.79 | 1.99 | 10 |
+| flask / requests / rich | 4.38 / 4.25 / 6.29 | 2.45 / 2.66 / 2.92 | 1.79 / 1.60 / 2.16 | 4 / 2 / 2 |
+
+date-fns is both the worst ratio and 1296 containers against 1495 files — `C · |containers|` is
+10368 of its 44074-bit objective. That is the predicted shape, but it is not yet the named
+falsification check: that needs 4c's sweep, and the ratio is also the one number the Python
+corpus's shallowness does *not* obviously disqualify it from having an opinion on.
+
+**The compression ratio's floor is above 1.0 in practice.** `H(v|u)` conditions on the importer
+and so charges nothing for locating it, while the tree is one shared code that must address
+importers and targets alike — a directory holding an importer and its `d` targets charges
+`log2(d+1)` against a floor of `log2(d)`. So 1.0 is an asymptote, not a reachable score. The gap
+shrinks with repo size and cancels out of cross-repo comparison, which is what the number is for.
+
 ---
 
 ## Phase 0 results
@@ -499,87 +534,37 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **4a** — `model/graph.py` + `model/metrics.py` | Everything else depends on it; carries the cost-function change | Opus 5 | not started |
-| 2 | **4b** — `report/run.py` with `--exclude` | Removes the confounds distorting every number above | Sonnet 5 | not started, needs 4a |
-| 3 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
-| 4 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
-| 5 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| 1 | **4b** — `report/run.py` with `--exclude` | Removes the confounds distorting every number above | Sonnet 5 | not started |
+| 2 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
+| 3 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
+| 4 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
 | — | **5a** — TS extractor → zod, date-fns, vite, tanstack-router | — | Sonnet 5 | **done** |
 
 Deferred and explicitly scoped: **symbol-level extraction** (see "Symbol level" below). It is the
 strongest test of the cost-function change but it is an extractor project, not a metrics one, and
 it should not block the file-level answer.
 
-### PR 4a — cost model and metrics
+### PR 4a — as built
 
-**`model/paths.py`** — extend, don't replace:
+Shipped as specified. Names and placement a consumer needs, plus the two places the result differs
+from the spec:
 
-- Keep `cost(u, v)` as the integer cost. It is the reporting view and its semantics are pinned by
-  existing tests; do not change them.
-- Add `bit_cost(u, v, branching)` where `branching: Mapping[tuple[str, ...], int]` maps a
-  directory's component tuple to its direct-child count. This deliberately breaks the pure-path-
-  arithmetic property — the bit cost is a function of the tree, not of two strings — so the new
-  function takes the tree data explicitly rather than reaching for a global.
-- Add `branching(graph)` to build that mapping, counting files and immediate subdirectories alike
-  as one child each (same contraction the cohesion metric uses — share the helper).
+- `model/paths.py` gained `child_of()`, `branching()`, `bit_cost(u, v, branching)`. `child_of` is
+  the shared contraction — `branching()` and the cohesion metric both use it, which is why it sits
+  in `paths.py` rather than in `metrics.py`.
+- `model/metrics.py`: `cost_histogram`, `total_bit_cost(graph, c)` (the objective, with
+  `conditional_entropy` exposed separately), `cross_face_entries`, `depth_vs_fanin`,
+  `integer_edge_cost` (mean/median/p90 — **not** `total_cost`, which would now be ambiguous
+  against the bit cost), `depth_histogram`, `directory_cohesion`, and `all_metrics`.
+- **Deviation 1: edges are deduplicated** in `metrics.edges()`. See "What we've learned" — this is
+  what makes the recorded means reproduce exactly.
+- **Deviation 2: compression ratio 1.0 is an asymptote,** not an attainable score. Also in "What
+  we've learned"; the metric is unchanged, the interpretation is narrower than the spec claimed.
 
-**`model/graph.py`** — transforms over a loaded `Graph`, all pure, all returning new `Graph`s:
-
-- `filter_nodes(graph, exclude)` — drop nodes whose `id` matches any glob in `exclude`, **and**
-  drop every edge pointing at them. Uses `PurePosixPath.full_match` (3.13+, supports `**`).
-- `splice_barrels(graph)` — rewire each edge through `is_barrel` nodes to its real target,
-  transitively, then drop the barrel nodes. **Must be cycle-guarded** (barrel cycles exist in the
-  wild) and **idempotent**. An edge that is type-only anywhere along the spliced chain stays
-  type-only. **Acceptance check:** run against the checked-in zod and date-fns graphs; must
-  reproduce the integer-cost histograms in "What we've learned" above (56/43/1/0 → 13/86/0/0 for
-  zod; near-unchanged for date-fns).
-- `value_edges_only(graph)` — drop `type_only` edges, for the type-vs-value diagnostic.
-
-**`model/metrics.py`** — one function per metric, each taking a `Graph`, returning a dict:
-
-1. **Cost histogram** — fraction of edges at integer cost 0 / 1 / 2 / 3+. Also computed separately
-   over type-only vs value edges.
-2. **Total bit cost** — `Σ bit_cost(e)`, plus the two derived numbers that make it interpretable:
-   - `C · |containers|`, reported separately so the two terms are always visible apart;
-   - **compression ratio** `Σ bit_cost(e) / (|E| · H(v|u))`, where `H(v|u)` is the empirical
-     conditional entropy of the edge target given its source. This is the scale-free score; a
-     value of 1.0 means the tree is an optimal code for this graph.
-   `C` is a parameter here, not yet a fixed number — 4c pins it. Default to something round and
-   documented as provisional.
-3. **Cross-face entries** — for each edge with integer cost ≥ 1, let
-   `k = len(common_prefix(dirs(u), dirs(v)))`:
-   - *gateway directory* = `dirs(v)[:k+1]` — the first directory crossed; the barrel the rule
-     would demand. Report the distinct count.
-   - *penetrated directories* = every directory on the descent path. Distinct count.
-   - *face-hit fraction* — of gateway entries, how many land exactly on that directory's face
-     (`classify.is_face`) vs. reach past it into the interior.
-   - all three normalized by total directory count.
-4. **Depth vs. fan-in** — Spearman ρ between `len(dirs(id))` and count of distinct importers.
-   Reported twice: over all files, and over files with fan-in ≥ 1. Implement ranking with average
-   ties; **cross-check against `scipy.stats.spearmanr`** in tests (scipy is dev-only — shipped code
-   stays numpy-only). Permutation p-value deferred to 4d.
-5. **Mean/median/p90 integer edge cost** — for continuity with the numbers already published.
-6. **Directory cohesion — a diagnostic, not an objective term.** For every directory with ≥2 direct
-   children (files or immediate subdirectories, contracted to one node each), build the induced
-   undirected subgraph over those children from the edge set; report whether it's connected, and if
-   not, the component sizes. Union-find over contracted children, same algorithm as the throwaway
-   script. Report both the raw split count and a "genuine" count (≥2 components of size ≥2,
-   filtering out the common case of one real cluster plus isolated leaves). Explicitly **not** a
-   term in the objective — see the rejected alternative above.
-
-Plus **depth histogram** — not a metric but a *gate*: if a repo's depths are nearly all one value,
-ρ is measuring noise and must be reported as uninformative rather than as evidence. requests will
-trip this; that's the point.
-
-**Tests** (`tests/fixtures/`) — small synthetic `Graph`s built in code with metrics computed **by
-hand in the test file**: a known integer-cost histogram, a known gateway set, a known ρ, a known
-cohesion split (include a case with an isolated leaf that should *not* count as "genuine" per the
-≥2-of-≥2 rule, and one that should). For the bit cost, pin the split-neutrality identity directly
-as a test — a 100-child directory and its 10×10 refactor must produce identical edge cost for an
-external importer — since that property is the whole argument for the formula. Cover the barrel
-splice (including a cycle and an idempotency check) and the exclude filter as units.
-
-No CLI in this PR.
+The acceptance checks are tests, not prose: `tests/test_corpus_metrics.py` pins the splice
+histograms, the four Phase 0 means, and the four cohesion split-rates against the checked-in
+corpus, so any future change to the edge set or the splice has to answer for them.
 
 ### PR 4b — report and `--exclude`
 
