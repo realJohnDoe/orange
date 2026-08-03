@@ -93,9 +93,23 @@ subject to:
 tiebreak: among equal-cost solutions, prefer the deeper placement
 ```
 
-`w_e` is 1 at file level and the reference count at symbol level. `C` is the **only** parameter:
-the number of bits of addressing a container must save to justify existing. It is calibrated
-against the reference corpus, not chosen (PR 4c).
+`w_e` is 1 at file level and the reference count at symbol level.
+
+`containers(T)` is the set of interior nodes of the containment tree — at file granularity every
+directory except the root (the root exists in every candidate layout, so counting it adds a
+constant that cancels out of every comparison); at symbol granularity every directory **and every
+file**, since a file holding symbols is a container. That is the mechanism behind "the same `C`
+decides whether to split a directory and whether to split a file": at symbol level they are the
+same kind of object in the same sum.
+
+`C` is the **only** parameter, measured in bits so it is dimensionally coherent with the edge
+term: the addressing a container must save to justify existing. It is the MDL structure term
+`L(structure)` to the edge term's `L(data | structure)` — the bit cost charges for *traversing* a
+container, and nothing else charges for its *existence*. A constant per container is deliberately
+the leading-order approximation; a more faithful `L(structure)` would encode the tree's shape and
+each directory's name, but that is `O(|containers|)` anyway up to constants, and PR 4c's whole bet
+is that one number is empirically stable. Adding structure to `C` before testing that would be
+premature. It is calibrated against the reference corpus, not chosen (PR 4c).
 
 There are no min/max size bounds. `C` replaces `min files per directory`; the `log2(branching)`
 term replaces `max files per directory`. This is the change that makes the objective self-
@@ -129,14 +143,49 @@ The bit cost fixes all four with one mechanism, and its properties are worth sta
 
 - **Collapse is no longer free.** A flat root of 1000 files charges `log2(1000) ≈ 10` bits on
   every edge. Under the integer cost it charges 0.
-- **Split-neutrality.** `log2(100) = log2(10) + log2(10)`. Pure regrouping is *exactly* free.
-  Nesting never pays for its own sake — only when it aligns with locality. This is the "no free
-  lunch" guarantee that keeps the objective measuring structure instead of rewarding depth.
-- **Corollary: absent locality, flatten.** For a uniformly random target, total addressing is
-  `log2(N)` bits regardless of tree shape, so `C · |containers|` is pure overhead and the optimum
-  is a flat directory. The entire payoff of hierarchy comes from the conditional distribution
-  `p(v | u)` being concentrated. The tool's default advice on a repo whose dependencies carry no
-  locality is *flatten it*, which is a sharper and more falsifiable thesis than the old one.
+- **Split-neutrality.** *Pure regrouping* means repartitioning a container's children without
+  adding or removing leaves — 100 files in `D` become 10 subdirectories of 10. Because
+  `log2(100) = log2(10 × 10) = log2(10) + log2(10)`, this is exactly free for two of the three
+  edge classes, and strictly cheaper for the third:
+
+  | Edge | flat `D` | after a balanced `m`-way split | Δ |
+  | --- | --- | --- | --- |
+  | from outside `D` into `v` | `log2(k)` | `log2(m) + log2(k/m)` | **0** |
+  | `u → v`, landing in *different* groups | `log2(k)` | `log2(m) + log2(k/m)` | **0** |
+  | `u → v`, landing in the *same* group | `log2(k)` | `log2(k/m)` | **−log2(m)** |
+
+  So the entire value of splitting a directory is the edges the partition does *not* cut. Nesting
+  never pays for its own sake — only when it aligns with locality. This is the "no free lunch"
+  guarantee that keeps the objective measuring structure instead of rewarding depth.
+- **The split rule.** Writing `W` for the edges whose endpoints stay together, the table above
+  collapses to a single decision:
+
+  ```
+  saving = W · log2(m)      cost = C · m      split iff  W · log2(m) > C · m
+  ```
+
+  `W` is maximized by the partition cutting the fewest edges, so the objective performs graph
+  partitioning without ever being told to — which is why a separate clustering objective is
+  rejected below. It also localizes where locality enters: under a **random** partition each edge
+  survives with probability ≈ `1/m`, so `W ≈ E/m` and the saving is `(E/m)·log2(m)`, peaking near
+  `0.5·E` at `m` = 2–4 and decaying after; under a **locality-aligned** partition `W ≈ E` and the
+  saving is `E·log2(m)`, which keeps growing. Same formula, same repo: an arbitrary split justifies
+  at most one shallow level, a real modular decomposition justifies a deep tree.
+- **`C` is not optional.** No row of that table is ever negative, so the edge term alone recurses
+  to a binary tree. Even a clique wants to split: 10 mutually-importing files cost 299 bits flat
+  and 259 bits as 5+5, because the 40 within-group ordered pairs each save exactly one bit. `C` is
+  the only thing standing between the objective and an infinitely deep tree — and that example
+  also fixes the scale, since the split pays iff `40 > 2C`. Rule of thumb from `m = 2`: a directory
+  must keep `W > 2C` internal edges uncut to justify splitting in two.
+- **Corollary: absent locality, flatten.** A tree induces a distribution over leaves,
+  `q(v) = Π 1/branching`, and expected address length is the cross-entropy
+  `H(p, q) = H(p) + D_KL(p ‖ q) ≥ H(p)`. Under uniform access, `log2(N)` is therefore a **floor**
+  that any *balanced* tree achieves and no tree beats — unbalanced ones are strictly worse
+  (splitting 100 into 90 + 10 costs a file in the big group `log2(2) + log2(90)` = 7.49 bits, up
+  from 6.64). Since strict improvement is impossible and ties are the best case, `C · |containers|`
+  is pure overhead and the optimum is flat. The entire payoff of hierarchy comes from `p(v | u)`
+  being concentrated. The tool's default advice on a repo whose dependencies carry no locality is
+  *flatten it*, which is a sharper and more falsifiable thesis than the old one.
 - **It is a compression ratio, so it is scale-free.** `Σ w_e · cost(e)` is the cross-entropy of
   the dependency graph under the code induced by the directory tree, and its floor is the
   conditional entropy `H(v | u)`. Reporting `used / floor` gives an absolute, cross-repo-
@@ -180,7 +229,7 @@ Consequences worth designing around:
    `lib/`, the `@/` alias roots). Edges into them cost 0 regardless of geometry. Do not forbid
    these — **count** them. "This repo declares 3 global namespaces" vs. 30 is itself a quality
    signal, and it turns an unbounded escape hatch into a number that can be driven down.
-2. **Frozen subtrees.** A `--freeze` list of paths whose layout is convention-governed rather than
+2. **Frozen subtrees.** A `--freeze` list (PR 4c) of paths whose layout is convention-governed rather than
    dependency-governed: file-based routing, `migrations/`, `__tests__/`, per-locale data tables.
    The model has nothing true to say about these (see "Where the model will be wrong") and must be
    able to be told so. This is load-bearing, not politeness — without it the tool's first
@@ -451,8 +500,8 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
 | 1 | **4a** — `model/graph.py` + `model/metrics.py` | Everything else depends on it; carries the cost-function change | Opus 5 | not started |
-| 2 | **4b** — `report/run.py` with `--exclude` / `--freeze` | Removes the confounds distorting every number above | Sonnet 5 | not started, needs 4a |
-| 3 | **4c** — local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
+| 2 | **4b** — `report/run.py` with `--exclude` | Removes the confounds distorting every number above | Sonnet 5 | not started, needs 4a |
+| 3 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
 | 4 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
 | 5 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
 | — | **5a** — TS extractor → zod, date-fns, vite, tanstack-router | — | Sonnet 5 | **done** |
@@ -532,7 +581,7 @@ splice (including a cycle and an idempotency check) and the exclude filter as un
 
 No CLI in this PR.
 
-### PR 4b — report, and the exclusion mechanisms
+### PR 4b — report and `--exclude`
 
 **`report/run.py`** — typer CLI. **One invocation per variant**, with an `--output` directory,
 rather than an internal variant sweep.
@@ -546,10 +595,12 @@ uv run python -m report.run --output report/out/no-tests \
 - `--exclude PATTERN` — repeatable glob; drops nodes from the graph entirely. **Not optional
   polish**: zod's 59% test contamination and date-fns's single-file-directory convention distort
   every number in "What we've learned" and in the Phase 0 results, and this flag is the only fix.
-- `--freeze PATTERN` — repeatable glob; keeps nodes in the graph and in the cost, but marks their
-  subtree as not-a-placement-candidate. Needed by 4c (a frozen file must not be counted as
-  locally non-optimal) and by any eventual advisory output. Distinct from `--exclude`: excluded
-  code doesn't exist, frozen code exists but isn't up for debate.
+  Named `--exclude`, not `--ignore`, deliberately. Across linters `ignore` overwhelmingly means
+  "process it but suppress findings" (`eslint-disable`, `# noqa`, ruff's `per-file-ignores`) and
+  usually takes *rule codes* rather than paths, while `exclude` means "don't look at it at all"
+  (ruff, flake8, black, mypy, `tsconfig`). This flag deletes nodes from the graph, so `exclude` is
+  the accurate word — and `--freeze` in 4c is the one that means "keep it, don't flag it," so
+  naming this one `--ignore` would invert both against convention.
 - `--output DIR` — where this run's artifacts land.
 - `--splice-barrels / --no-splice-barrels`, plus `--lang` / `--repo` filters.
 - Emits `summary.md`, `summary.csv`, per-repo metric JSON, and `worst-edges.csv` (top-N highest bit
@@ -564,6 +615,26 @@ the most important finding in the project so far and everything downstream reord
 ### PR 4c — local optimality and calibration of `C`
 
 The new headline experiment, and the reason this outranks figures.
+
+**`--freeze PATTERN`** — repeatable glob; keeps nodes in the graph and in the cost, but marks their
+subtree as not-a-placement-candidate. It belongs here rather than in 4b because 4b is a measurement
+pass over the actual layout, where nothing moves and so "can this move?" is never asked; local
+optimality is its first real consumer. Distinct from `--exclude` in effect, not just intent:
+
+- **Excluding changes the answer for files you didn't exclude.** Exclude `src/routes/**` and a util
+  imported *only* by routes now looks like it has zero importers, so the depth tiebreak buries it as
+  deep as possible. That recommendation is wrong — the file is widely shared. Freezing the routes
+  keeps their edges live, so the util still floats to its true caller-LCA.
+- **Branching is in the objective now.** A directory of 40 frozen migrations genuinely costs
+  `log2(40)` to index into, and every edge descending through it pays that. Excluding them claims
+  the directory has zero children, which is a different number, not a cleaner one.
+- **They answer different questions.** Exclude = "not part of the system being measured" (tests,
+  generated, vendored). Freeze = "real code with real dependencies, but its *location* is decided
+  outside the dependency graph" (file-based routing, timestamp-ordered migrations).
+
+meridian2 needs both and the line is sharp: `routeTree.gen.ts` is **exclude** — its enormous fan-in
+is a codegen artifact, not design pressure. `src/routes/**` is **freeze** — real files, real
+imports, location dictated by the router.
 
 **Local optimality.** For each non-frozen file, evaluate moving it to every other existing
 directory and record whether any move reduces the total objective. Report the fraction of files
