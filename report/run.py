@@ -250,8 +250,7 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                 "internal_edges",
                 "external_entries",
                 "split_bits",
-                "split_size",
-                "split_kind",
+                "split_candidates",
                 "c_min",
                 "c_max",
             ]
@@ -268,8 +267,7 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                     x.internal_edges,
                     x.external_entries,
                     _fmt(x.split_bits),
-                    x.split_size,
-                    x.split_kind,
+                    len(x.splits),
                     _fmt(x.c_min),
                     _fmt(x.c_max),
                 ]
@@ -277,22 +275,33 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
 
 
 def write_splits_csv(census: list[tuple[str, Container]], path: Path, c: float) -> None:
-    """The directories that want subdividing at this C, and which child goes where.
+    """Every subdirectory a directory could gain at this C, and who moves into it.
 
     This is the "these files belong in a subdirectory" finding, and unlike the
     dissolve verdict it names the members, so the recommendation is actionable
-    rather than merely a score. Ordered by how strongly the split pays.
+    rather than merely a score. *All* paying candidates are emitted, ranked per
+    directory -- both sides of a cut are usually real proposals and the bit
+    count cannot say which one a maintainer would accept. Picking among them is
+    a naming judgement, and the consumer that does the naming can do the
+    picking.
     """
-    wanted = [(repo, x) for repo, x in census if x.split_size >= 2 and x.split_bits + c < 0]
-    wanted.sort(key=lambda row: row[1].split_bits)
+    rows = [
+        (repo, x, rank, s)
+        for repo, x in census
+        for rank, s in enumerate(x.splits)
+        if s.delta(c) < 0
+    ]
+    rows.sort(key=lambda row: (row[3].bits, row[0], row[1].dir))
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["repo", "dir", "delta", "split_bits", "size", "of", "kind", "child"])
-        for repo, x in wanted:
-            for child in x.split_members:
+        writer.writerow(
+            ["repo", "dir", "rank", "delta", "split_bits", "size", "of", "kind", "child"]
+        )
+        for repo, x, rank, split in rows:
+            for child in split.members:
                 writer.writerow(
-                    [repo, x.dir, _fmt(x.split_bits + c), _fmt(x.split_bits),
-                     x.split_size, x.children, x.split_kind, child]
+                    [repo, x.dir, rank, _fmt(split.delta(c)), _fmt(split.bits),
+                     len(split.members), x.children, split.kind, child]
                 )
 
 

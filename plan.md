@@ -790,13 +790,18 @@ large and a directory would rather dissolve into its parent; too small and it wo
   operation people mean by "these files belong in a subdirectory": the answer names a subset, not a
   repartitioning of everything.
 
-  Two constraints keep the proposal and its description the same operation. The subset must hold
-  **at least two** children, since a one-child subdirectory has branching 1 and carries zero
-  addressing information by construction — exactly what `container_information()` reports as pure
-  `C` overhead in date-fns. And it must be the **smaller** side, because extracting a majority
-  prices fine but means "promote the others", which is a move. Without the first, the sign cut peels
-  a single file off nearly every large directory (397 + 1 for date-fns's `fp`); without the second,
-  `fp` proposes boxing 382 of its 398 children.
+  **No shape constraints, because the arithmetic does not need any.** A one-child subset prices at
+  *exactly* 0.0 — the parent swaps a file child for a directory child so its branching is unchanged,
+  and the new directory's `log2(1)` is zero — verified across all 2546 single-child extractions in
+  the corpus. It is therefore `+C` and never pays, without being excluded. And a *majority* subset
+  is a real proposal, not a degenerate one: burying date-fns's 382 cold `fp` children so its 16 hot
+  ones sit at the top is the same tree as promoting the 16, and which phrasing is better advice is
+  not something a bit count knows. Both sides of every cut are kept and ranked.
+
+  (An earlier version imposed both constraints, justified by failure modes — a singleton peeled off
+  `fp`, a 382-of-398 box — that belonged to the *partition* formulation, where the remainder was
+  also boxed. Neither can occur under extraction. Carrying a justification across a change of
+  operation is its own lesson.)
 
 Both are checked against a rebuilt graph for every container in flask, rich, zod, vite and
 tanstack-router, including deliberately arbitrary subsets nothing would propose, as is every move
@@ -894,9 +899,12 @@ right shape for a linter. Read them:
 | tanstack `router-core/src/ssr/serializer` | 4 | 1 | 3 | 9 | −2.4 | marginal |
 
 **The third finding type: which files belong in a subdirectory.** `report/run.py` also emits
-`splits.csv` — the directories that would pay to gain one, and *which children move into it*. This
-is the most legible output the tool produces, because it names files rather than scoring a
-directory. Eleven proposals across the corpus; the two best:
+`splits.csv` — every subdirectory a directory could pay to gain, ranked, and *which children move
+into it*. This is the most legible output the tool produces, because it names files rather than
+scoring a directory. **All paying candidates are emitted rather than one winner**: both sides of a
+cut are usually real proposals, and which one a maintainer would accept is a naming judgement, so
+the consumer that does the naming should do the picking. 28 candidates across the corpus; the two
+largest:
 
 | directory | proposal | Δ bits |
 | --- | --- | --- |

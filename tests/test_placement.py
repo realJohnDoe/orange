@@ -291,12 +291,11 @@ def test_split_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
     base = edge_bits(g)
     checked = 0
     for c in containers(g):
-        if c.split_size < 2:
-            continue
         d = tuple(c.dir.split("/"))
-        rebuilt = edge_bits(apply_extract(g, d, set(c.split_members))) - base
-        assert c.split_bits == pytest.approx(rebuilt, abs=1e-6)
-        checked += 1
+        for split in c.splits:
+            rebuilt = edge_bits(apply_extract(g, d, set(split.members))) - base
+            assert split.bits == pytest.approx(rebuilt, abs=1e-6)
+            checked += 1
     assert checked, f"{repo} proposed no split, so this proves nothing"
 
 
@@ -367,8 +366,8 @@ def test_two_clusters_wants_a_subdirectory_below_its_c_min() -> None:
     #   one connected pair down, not to partition all five -- the leaf stays.
     pkg = next(c for c in containers(two_clusters()) if c.dir == "pkg")
     assert pkg.components == 3
-    assert pkg.split_size == 2
-    assert len(pkg.split_members) == 2
+    assert pkg.splits
+    assert len(pkg.splits[0].members) == 2
     assert pkg.c_min > 0
     assert not pkg.stable(pkg.c_min / 2)
 

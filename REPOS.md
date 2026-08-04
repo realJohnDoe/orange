@@ -25,8 +25,9 @@ single figure here.
 | rich | py | 100 | 419 | 1 | 1 / 0 / 0 | 0 | 71% | 0.00 | 6.29 | 2.16 | 0–1 |
 | requests | py | 19 | 73 | **0** | 0 / 0 / 0 | 0 | 100% | 0.00 | 4.25 | 1.60 | 0 |
 
-`wants a subdir` counts directories from `splits.csv` that would pay to move some of their children
-down into a new subdirectory at `C = 8`. `earns / neutral / costs` is the per-directory verdict from
+`wants a subdir` counts directories from `splits.csv` with at least one paying proposal to move
+some of their children down into a new subdirectory at `C = 8`; the file ranks every candidate, so
+there are more proposals than directories (28 across 13). `earns / neutral / costs` is the per-directory verdict from
 `containers.csv`: does deleting this
 directory and moving its children up make addressing more expensive, change nothing, or make it
 cheaper? See plan.md, "PR 4c — as built". `ratio` is bits spent over the conditional-entropy floor;
