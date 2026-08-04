@@ -22,11 +22,13 @@ aesthetic preference and that is worth learning before building a placement engi
 
 Phase 0 tests this with no placement engine, no dominators, and no symbol resolution.
 
-**Status after PR 4c: it depends which cost you ask, and that is itself the result.** Under the
+**Status after PR 4c: partly, and the interesting part is where it has nothing to say.** Under the
 integer cost all four TypeScript repos place files far better than chance. Under the bit cost — the
-actual objective — most of their files and half of their directories are not where it would put
-them. See "Phase 0 results" and "Open risks"; the two are not reconciled, and reconciling them is
-the go/no-go.
+actual objective — 2–13% of their directories actively cost addressing bits, 26–53% earn it, and
+**the rest are exactly neutral**: the dependency graph has no opinion on them in either direction.
+The hypothesis is neither confirmed nor falsified so much as bounded. The graph can identify a
+small set of genuinely bad boundaries; it cannot derive a tree, because most boundaries real repos
+draw are taxonomic and the graph is blind to taxonomy. See "Phase 0 results" and "Open risks".
 
 ---
 
@@ -349,10 +351,10 @@ status quo by a landslide.
 | `extractors/ts/` | dependency-cruiser-based extractor (`extract.mjs` + `extract.py`). |
 | `corpus/sync.py` | Pinned shallow checkouts, `--lang` filter. |
 | `corpus/graphs/` | `flask`, `requests`, `rich`, `zod`, `date-fns`, `vite`, `tanstack-router` — checked in, deterministic. `meridian2` not yet extracted (PR 6). |
-| `model/graph.py` | `filter_nodes()`, `splice_barrels()`, `value_edges_only()` — pure transforms returning new `Graph`s. |
+| `model/graph.py` | `filter_nodes()`, `reroot()`, `splice_barrels()`, `value_edges_only()` — pure transforms returning new `Graph`s. |
 | `model/metrics.py` | Every PR 4a metric, one function per metric returning a dict, plus `all_metrics()`. Adds `charge_counts()` (the objective decomposed per container) and `container_information()` (the date-fns check) in 4c. `DEFAULT_C = 8.0` — still provisional after 4c, which found C is not identified. |
 | `model/placement.py` | `move_frontier()`, `local_optimality()`, `sweep()` — single-file local optimality, C-independent by construction. `containers()`, `container_stability()`, `stability_sweep()` — per-directory dissolve/split pricing. `freeze_sets()`. Every delta is checked against a rebuilt graph in `tests/test_placement.py`. |
-| `report/run.py` | Typer CLI, one invocation per variant. `--exclude` and `--freeze` (repeatable globs), `--splice-barrels/--no-splice-barrels`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`, `movers.csv`. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
+| `report/run.py` | Typer CLI, one invocation per variant. `--exclude` and `--freeze` (repeatable globs), `--splice-barrels`, `--reroot`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`, `movers.csv`, and `containers.csv` — every directory priced for its own existence, `costs` verdicts first. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
 | `report/calibrate.py` | The C sweep. Emits `calibration.csv` / `calibration.md` with the stability curve, the split-vs-dissolve breakdown, what directories earn before C, and a mechanically-derived verdict. |
 
 ### Schema, as actually built
@@ -564,34 +566,39 @@ not arbitrary; it does not say the layout is *good*. The demanding version is lo
 for each file, does moving it to any other existing directory reduce total cost? — and that is
 also the artifact the shipped tool emits.
 
-**Local optimality (PR 4c), and it is a much worse result than the permutation baseline.** Spliced,
-at any `C > 0` (the number is `C`-independent — see "PR 4c — as built"):
+**Local optimality (PR 4c), and it is a much worse result than the permutation baseline.** Spliced
+and re-rooted, at any `C > 0` (the number is `C`-independent — see "PR 4c — as built"):
 
 | repo | locally optimal, all files | with tests excluded |
 | --- | --- | --- |
-| zod | 56% | 4% |
-| vite | 36% | 20% |
-| date-fns | 12% | 12% |
+| zod | 60% | 11% |
+| vite | 44% | 26% |
+| date-fns | 27% | 27% |
 | tanstack-router | 9% | 9% |
-| flask / requests / rich | 0% / 5% / 21% | unchanged |
+| flask / requests / rich | 52% / 100% / 71% | unchanged |
 
 Against a shuffle these four repos looked decisively non-arbitrary on both axes. Against the
-objective itself, **most of their files are in a directory the bit cost would move them out of** —
-and zod, the best of them on the raw corpus, collapses to 4% once its test files stop propping the
-number up. Both halves of the caveat above turn out to be right: beating random said very little,
-and the demanding test says something quite different.
+objective itself, **a large share of their files sit in a directory the bit cost would move them
+out of** — and zod, the best of them on the raw corpus, drops to 11% once its test files stop
+propping the number up.
 
-Read the direction of the recommendations before reading the number as a verdict on the repos.
-88 of zod's 107 movers want to go to the **repo root**, and the reason is visible in the tree:
-`packages/` → `zod/` → `src/` is a chain of single-child directories carrying 0 bits, so the root
-has branching 1 and is nearly-free parking. The files that want it most — `core/errors.ts`,
-`core/util.ts`, `core/checks.ts` — are exactly zod's most-shared modules, so "shared things float
-up" is working as designed. But the same mechanism hoists 15 individual locale files out of
-`v4/locales/`, and that is not a design insight: evicting *any* member of a large directory shaves
-`log2(k) → log2(k−1)` off every edge that addresses its siblings, so a big directory is never
-locally optimal and every one of its members individually wants out. Some of the missing 96% is
-the model finding real structure and some of it is that pressure; file-level local optimality
-cannot separate them, and this is the sharpest argument yet for the symbol level.
+Two artifacts were found in this number and both are now corrected in the table above; a third is
+not correctable and limits what the number can mean.
+
+1. **Root-parking (fixed by `reroot`).** The analyzed subtree sits under a single-child chain
+   (`packages/zod/src`), leaving the root with branching 1 and therefore nearly free. 176 of vite's
+   247 movers and 659 of date-fns's wanted the repo root before the fix; 9 and 12 after. vite's
+   score moved 36% → 44%, date-fns's 12% → 27%.
+2. **Self-edges** in the objective but not in the deltas — see the PR 4c section.
+3. **Large-directory eviction pressure, which is inherent.** Evicting *any* member of a
+   `k`-child directory shaves `log2(k) → log2(k−1)` off every edge addressing its siblings, so a
+   large directory is never locally optimal and every one of its members individually wants out.
+   That is why 15 individual locale files want out of zod's `v4/locales/`. Some of the remaining
+   movers are the model finding real structure — its top picks are `core/errors.ts`, `core/util.ts`
+   and `core/checks.ts`, exactly zod's most-shared modules, so "shared things float up" works — and
+   some are that pressure. File-level local optimality cannot separate them, which is the sharpest
+   argument yet for the symbol level, and the reason the per-directory `costs` verdict is a better
+   advisory output than the per-file mover list.
 
 ---
 
@@ -601,8 +608,9 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **6** — meridian2 | The optimization subject. No longer blocked on `C` being pinned — 4c found it is not identifiable, so meridian2 gets read at the same C-independent numbers as the reference corpus | Opus 5, plan mode | not started |
-| 2 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| 1 | **7** — naming as a validator over 4c's `costs` list | The tool's usability now rests on it, the candidate set already exists (`containers.csv`), and it is cheap. Decides the go/no-go more directly than anything else queued | Opus 5 | not started |
+| 2 | **6** — meridian2 | The optimization subject. No longer blocked on `C` being pinned — 4c found it is not identifiable, so meridian2 gets read at the same C-independent numbers as the reference corpus | Opus 5, plan mode | not started |
+| 3 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
 | — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
 | — | **4b** — `report/run.py` with `--exclude` | — | Sonnet 5 | **done** |
 | — | **4c** — `--freeze` + local optimality + calibration of `C` | — | Opus 5 | **done** |
@@ -784,20 +792,45 @@ vite, and by `C ≈ 1.2` it is zero everywhere. Dissolution pressure dominates a
 and it is distinguished from `SHARED` mechanically — a plateau whose left edge is the smallest `C`
 tested is the sweep running out of room, not a measurement.
 
-**The stronger, `C`-free result underneath it: half to three quarters of the directories in these
-repos do not earn a single bit.** `dissolve_bits ≤ 0` means flattening the directory into its
-parent is already cheaper in edge bits alone, before `C` is considered at all. Spliced, unfiltered:
+**The `C`-free result underneath it, and the reason `C` cannot be identified: most directory
+boundaries are addressing-*neutral*.** Every directory falls into one of three classes, and the
+distinction is the whole finding — an earlier draft of this section collapsed the middle one into
+the third and reported "half to three quarters of directories do not earn a bit," which was wrong
+and much more alarming than the data:
 
-| repo | containers | earning > 0 bits | share | p25 / median / p75 bits earned |
-| --- | --- | --- | --- | --- |
-| zod | 19 | 10 | 53% | 92 / 362 / 1973 |
-| vite | 132 | 62 | 47% | 1.3 / 3.5 / 10.6 |
-| tanstack-router | 10 | 4 | 40% | 15 / 33 / 75 |
-| date-fns | 1295 | 345 | 27% | 13 / 14 / 42 |
+| repo | containers | earns > 0 | **neutral (= 0)** | **costs (< 0)** | p25 / median / p75 bits earned |
+| --- | --- | --- | --- | --- | --- |
+| zod | 16 | 10 | 4 | **2** (13%) | 92 / 362 / 1973 |
+| vite | 129 | 62 | 64 | **3** (2%) | 1.3 / 3.5 / 10.6 |
+| tanstack-router | 9 | 4 | 4 | **1** (11%) | 15 / 33 / 75 |
+| date-fns | 1292 | 345 | 855 | **92** (7%) | 13 / 14 / 42 |
 
-The medians span two orders of magnitude, which is the real evidence against `C` being a constant:
-even restricted to the directories that do earn their keep, what they are worth is a repo-scale
-quantity, not a universal one.
+- **earns** — dissolving would make addressing more expensive. It is buying encapsulation.
+- **neutral** — dissolving changes the edge term by *exactly* zero. Almost always a pass-through:
+  the directory has one child, or is its parent's only child, so it partitions nothing and `log2`
+  telescopes. Verified: **all 855** of date-fns's neutral containers are one or the other, as are
+  all of tanstack-router's and 55 of vite's 64.
+- **costs** — dissolving would make addressing strictly cheaper. No `C` saves it. **2–13%.**
+
+That middle column is why `C` is unidentifiable, and it is a much cleaner explanation than the
+sweep's: **the population `C` governs sits exactly at zero, so only `C`'s sign ever matters and its
+magnitude never enters.** For a neutral container, keep-versus-dissolve is a comparison of `C`
+against 0, and any `C > 0` says dissolve. There is nothing for a sweep to find.
+
+The medians among the earning directories still span two orders of magnitude (3.5 bits in vite
+against 362 in zod), which is the evidence against `C` being a constant. But the headline is the
+neutral majority: **the dependency graph has no opinion on most directory boundaries, in either
+direction.** That is an information ceiling, not a calibration problem, and no amount of tuning
+moves it.
+
+**Re-rooting, a measurement artifact found while checking the above.** Node ids are
+checkout-relative, so zod's 286 files all carry `packages/zod/src/`. Those levels each have one
+child and carry 0 bits — but they leave the *root* with branching 1, which makes it nearly-free
+parking, and local optimality duly recommended hoisting every widely-shared file into it. Before
+`model/graph.py::reroot`, 176 of vite's 247 movers and 659 of date-fns's wanted the repo root;
+after, 9 and 12. `reroot` strips the longest common directory prefix — provably the maximal
+single-child chain, so integer and bit costs are both unchanged and only the container count and
+root branching move — and it is on by default in both CLIs.
 
 **Deviation: the calibration measure changed, and the file-level sweep is reported but not used.**
 The spec's measure (local optimality vs `C`) is still computed and still emitted — it is the
@@ -817,6 +850,27 @@ one child, carry exactly 0 bits of addressing between them, and consume 16.7% of
 objective as pure `C` overhead. zod and vite do not look like that: 26% and 40% single-child, 0.3%
 and 6.4% of the objective. (856 is not the 937 quoted below — that counted directories holding one
 *file*, this counts one *child* of either kind, which is the quantity `log2` sees.)
+
+**The `costs` list is the shippable artifact, and it is small — but it is not clean.**
+`report/run.py` now emits `containers.csv`, every directory priced for its own existence, ordered
+so the `costs` verdicts are the first rows. Across all four reference repos it is 98 rows, and 92
+of those are date-fns's `_lib` convention. On a normal repo it is 1–3 candidates, which is the
+right shape for a linter. Read them:
+
+| directory | children | components | internal | external | bits | is it a finding? |
+| --- | --- | --- | --- | --- | --- | --- |
+| vite `shared` | 10 | 4 | 7 | 91 | −92 | **yes** — four unrelated clusters in a directory named `shared` |
+| zod `v4/locales` | 52 | 50 | 2 | 1256 | −799 | no — a legitimate taxonomy |
+| date-fns `locale/_lib` | 4 | 4 | 0 | 346 | −650 | no — same |
+| vite `node/__tests__/fixtures` | 18 | 18 | 0 | 3 | −10 | no — should have been `--exclude`d |
+| tanstack `router-core/src/ssr/serializer` | 4 | 1 | 3 | 9 | −2.4 | marginal |
+
+**Nothing in the numbers separates the first row from the second.** Both are "many components, high
+external traffic, no internal cohesion". The difference is that `locales` names a real taxonomy and
+`shared` does not — which is precisely plan.md's naming-as-validator, and this is the strongest
+empirical case for it the project has produced: the graph narrows four repos to ~98 candidates and
+a naming pass is what would cut that to the one or two that are real. Promoted from "later phase"
+to the blocking question for the tool (see "Open questions").
 
 ### PR 4d — figures and permutation port
 
@@ -952,7 +1006,8 @@ dependency graph, or you get a junk drawer rather than a module.
 **Hysteresis and the accepted/rejected-move lockfile** (also pins generated names, which otherwise
 drift every run).
 
-**Naming as a validator, not a decoration.** Ask an LLM to name each extracted cluster; if the best
+**Naming as a validator, not a decoration.** ~~Later phase~~ — **PR 4c promoted this to the
+blocking question; see "Open questions".** Ask an LLM to name each extracted cluster; if the best
 it can do is `utils`, `helpers`, or `misc`, reject the cut and try the next candidate. Unnameable
 means incoherent. This turns the fuzziest step into a quality gate on the thing graph metrics
 cannot evaluate — and it is the only lever available for the "grouping mutually-unrelated things"
@@ -979,6 +1034,14 @@ blind spot.
   conventions like meridian2's `@/*` → `./src/*` involve no package name and remain unsolved.
 - **Do symbols matter?** See "Symbol level". The file-level ceiling is already visible: `zsf.ts` and
   `rich/_unicode_data` produce the *identical* file-level signature.
+- **Can naming separate a junk drawer from a taxonomy? This is now the question the tool depends
+  on.** PR 4c's `costs` list is the right *size* for a linter — 1–3 candidates on a normal repo —
+  but not clean: vite's `shared` (four unrelated clusters, no internal cohesion) and zod's
+  `v4/locales` (52 files, no internal cohesion) are indistinguishable in every number the graph
+  produces, and only the first is a finding. An LLM naming pass over the `containers.csv` `costs`
+  rows is a cheap, decisive experiment against a candidate set that already exists, and it should
+  come before any placement engine. If naming cannot separate them, the tool has no usable output
+  and the answer is no.
 - **Adoption posture.** The tool most likely to be used is an advisory metric plus a handful of
   high-confidence moves (the `knip` / `dependency-cruiser` shape), not a formatter. The strongest
   niches are agent-written code (no aesthetic ownership, sprawls badly), greenfield, and monorepo
@@ -998,17 +1061,23 @@ blind spot.
   fixed the *real*-side numbers for zod and vite (see "Confound correction" under Phase 0 results);
   the shuffled-baseline comparison against the corrected corpus still needs PR 4d's permutation
   port before "far better than random" can be re-claimed for it.
-- **The bit cost now has numbers, and they do not support the hypothesis.** This risk fired. `C`
-  does not calibrate (see "PR 4c — as built"), and the bit cost's verdict on four repos with an
-  independent reputation for good structure is that 64–96% of their files and half to three
-  quarters of their directories are misplaced — where the integer cost said all four beat a shuffle
-  decisively. Three readings are live and Phase 0 cannot choose between them: (a) the bit cost is
-  right and well-regarded TS repos really are over-nested, which is a strong claim needing the Go
-  control to be credible; (b) the objective has a genuine pathology — evicting any member of a
-  large directory always saves a little for its siblings, so no large directory is ever locally
-  optimal; (c) file granularity is too coarse, and the symbol level would show the locality the
-  file graph cannot. The `FINDINGS.md` go/no-go has to weigh these, and it should not be written as
-  if the bit cost had been validated.
+- **The bit cost now has numbers. They are mixed, and the file-level half is weak.** `C` does not
+  calibrate, and 40–91% of files sit somewhere the objective would move them. But the
+  *directory*-level verdict is not the indictment an earlier draft of this section claimed: only
+  2–13% of directories actively cost addressing bits, and the large middle is provably neutral
+  rather than bad. Two readings of the weak file-level number are live and Phase 0 cannot choose
+  between them: (a) the objective has a real pathology — evicting any member of a large directory
+  always saves a little for its siblings, so no large directory is ever locally optimal; (b) file
+  granularity is too coarse and the symbol level would show locality the file graph cannot. The
+  `FINDINGS.md` go/no-go has to weigh these, and it should not be written as if the bit cost had
+  been validated as a placement rule.
+- **The graph is silent on taxonomy, and that is most of the tree.** The neutral majority is an
+  information ceiling: on most directory boundaries the dependency graph has no opinion in either
+  direction. Worse, the boundaries it *does* have an opinion about include legitimate taxonomies —
+  the largest `costs` verdict in the corpus is zod's `v4/locales`, which is correct by the model
+  and wrong as advice. Nothing in the numbers distinguishes it from vite's `shared`, which is a
+  real junk drawer. Naming-as-validator is therefore not a later refinement but the component that
+  decides whether the tool's output is usable, and it is entirely unbuilt and untested.
 - **File-level cohesion can't distinguish "junk drawer" from "parallel siblings sharing an
   interface."** Needs symbol-level data or naming-as-validator; not solvable with what Phase 0 has.
 - **tsconfig path-alias resolution (`@/*`) is unsolved** and blocks PR 6.

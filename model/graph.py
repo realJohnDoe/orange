@@ -6,9 +6,10 @@ excluded) off a single cached extraction. This is the "extract once, filter in
 analysis" half of the plan's extractor contract -- the extractors record what
 the source says, these transforms decide what a given measurement counts.
 
-The three transforms answer three different questions:
+The four transforms answer four different questions:
 
 - filter_nodes  -- which files should this measurement see at all?
+- reroot -- where does the analyzed system actually begin?
 - splice_barrels -- what does an import through a re-export file really reach?
 - value_edges_only -- does the picture change if types don't count as coupling?
 """
@@ -20,6 +21,7 @@ from dataclasses import replace
 from pathlib import PurePosixPath
 
 from extractors.schema import Graph, Node
+from model.paths import dirs
 
 
 def filter_nodes(graph: Graph, exclude: Sequence[str]) -> Graph:
@@ -47,6 +49,51 @@ def filter_nodes(graph: Graph, exclude: Sequence[str]) -> Graph:
         if n.id not in dropped
     )
     return replace(graph, nodes=nodes)
+
+
+def reroot(graph: Graph) -> Graph:
+    """Strip the directory prefix every file shares, so the root is where the code is.
+
+    Node ids are checkout-relative, so a repo analyzed at `packages/zod/src`
+    carries that prefix on all 286 of them. Those levels are not a decision the
+    repo made about where to put files -- they are where the analyzed subtree
+    happens to begin -- and by construction each has exactly one child, so under
+    the bit cost they carry zero addressing information.
+
+    Leaving them in is not harmless, because they make the *root* nearly empty.
+    A root of branching 1 costs log2(2) = 1 bit to add a file to, so it is
+    nearly-free parking, and model.placement duly recommends hoisting every
+    widely-shared file into it -- 93 of zod's 123 movers before this transform
+    existed. That is an artifact of where the checkout was rooted, not a finding.
+
+    The longest common prefix is exactly the maximal single-child chain from the
+    root, so this removes those levels and nothing else; edge bits are unchanged
+    (log2(1) = 0 at every stripped level) and only the container count and the
+    root's branching move.
+    """
+    if not graph.nodes:
+        return graph
+    prefix = dirs(graph.nodes[0].id)
+    for node in graph.nodes[1:]:
+        d = dirs(node.id)
+        n = 0
+        while n < min(len(prefix), len(d)) and prefix[n] == d[n]:
+            n += 1
+        prefix = prefix[:n]
+        if not prefix:
+            return graph
+    cut = len("/".join(prefix)) + 1
+    moved = {n.id: n.id[cut:] for n in graph.nodes}
+    nodes = tuple(
+        replace(
+            n,
+            id=moved[n.id],
+            imports=tuple(moved[t] for t in n.imports),
+            type_only=tuple(moved[t] for t in n.type_only),
+        )
+        for n in graph.nodes
+    )
+    return replace(graph, nodes=nodes, roots=(".",))
 
 
 def splice_barrels(graph: Graph) -> Graph:

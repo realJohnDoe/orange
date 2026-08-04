@@ -139,19 +139,19 @@ def test_build_report_flags_a_repo_over_the_unresolved_threshold() -> None:
         nodes=g.nodes,
         stats=Stats(unresolved_imports=10, external_imports_dropped=0),
     )
-    metrics, _, _ = build_report(g, c=8.0, top_n=5)
+    metrics, _, _, _ = build_report(g, c=8.0, top_n=5)
     assert metrics["unresolved_ratio"] == pytest.approx(10 / 11)
     assert metrics["flagged"] is True
 
 
 def test_build_report_does_not_flag_a_clean_repo() -> None:
-    metrics, _, _ = build_report(plan_md_tree(), c=8.0, top_n=5)
+    metrics, _, _, _ = build_report(plan_md_tree(), c=8.0, top_n=5)
     assert metrics["unresolved_ratio"] == pytest.approx(0.0)
     assert metrics["flagged"] is False
 
 
 def test_build_report_returns_at_most_top_n_worst_edges() -> None:
-    _, worst, _ = build_report(plan_md_tree(), c=8.0, top_n=2)
+    _, worst, _, _ = build_report(plan_md_tree(), c=8.0, top_n=2)
     assert len(worst) == 2
 
 
@@ -159,7 +159,7 @@ def test_build_report_returns_at_most_top_n_worst_edges() -> None:
 
 
 def test_write_summary_csv_has_one_row_per_repo(tmp_path) -> None:
-    metrics_a, _, _ = build_report(plan_md_tree(), c=8.0, top_n=1)
+    metrics_a, _, _, _ = build_report(plan_md_tree(), c=8.0, top_n=1)
     path = tmp_path / "summary.csv"
     write_summary_csv([metrics_a], path)
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
@@ -169,7 +169,7 @@ def test_write_summary_csv_has_one_row_per_repo(tmp_path) -> None:
 
 
 def test_write_summary_md_contains_a_header_row_and_one_row_per_repo(tmp_path) -> None:
-    metrics_a, _, _ = build_report(plan_md_tree(), c=8.0, top_n=1)
+    metrics_a, _, _, _ = build_report(plan_md_tree(), c=8.0, top_n=1)
     path = tmp_path / "summary.md"
     write_summary_md([metrics_a], path, c=8.0)
     text = path.read_text(encoding="utf-8")
@@ -237,7 +237,7 @@ def test_main_no_splice_barrels_matches_the_unspliced_histogram(tmp_path) -> Non
 
 
 def test_build_report_returns_movers_and_a_local_optimality_summary() -> None:
-    metrics, _, movers = build_report(plan_md_tree(), c=8.0, top_n=1)
+    metrics, _, movers, _ = build_report(plan_md_tree(), c=8.0, top_n=1)
     summary = metrics["local_optimality"]
     assert "movers" not in summary  # detail belongs in the CSV, not the JSON
     assert summary["locally_optimal"] + len(movers) == summary["files_considered"]
@@ -245,12 +245,31 @@ def test_build_report_returns_movers_and_a_local_optimality_summary() -> None:
 
 
 def test_build_report_freeze_removes_files_from_the_placement_question() -> None:
-    frozen, _, movers = build_report(plan_md_tree(), c=8.0, top_n=1, freeze=["a/**"])
+    frozen, _, movers, _ = build_report(plan_md_tree(), c=8.0, top_n=1, freeze=["a/**"])
     # a/ holds 4 of the 6 files; they stay in the cost but stop being candidates.
     assert frozen["local_optimality"]["frozen_files"] == 4
     assert frozen["local_optimality"]["files_considered"] == 2
     assert frozen["total_bit_cost"]["edges"] == 6  # every edge still counted
     assert all(not m["file"].startswith("a/") for m in movers)
+
+
+def test_main_writes_containers_csv_worst_first(tmp_path) -> None:
+    out = tmp_path / "all"
+    main(output=out, repo=["vite"])
+    rows = list(csv.DictReader((out / "containers.csv").open(encoding="utf-8")))
+    bits = [float(r["dissolve_bits"]) for r in rows]
+    assert bits == sorted(bits)  # the actionable `costs` rows sit at the top
+    assert rows[0]["verdict"] == "costs"
+    assert {r["verdict"] for r in rows} <= {"costs", "neutral", "earns"}
+
+
+def test_main_reroot_removes_the_shared_prefix_from_the_report(tmp_path) -> None:
+    rerooted, as_is = tmp_path / "rerooted", tmp_path / "as-is"
+    main(output=rerooted, repo=["vite"])
+    main(output=as_is, repo=["vite"], reroot=False)
+    first = lambda p: next(csv.DictReader((p / "containers.csv").open(encoding="utf-8")))
+    assert not first(rerooted)["dir"].startswith("packages/vite/src")
+    assert first(as_is)["dir"].startswith("packages/vite/src")
 
 
 def test_main_writes_movers_csv(tmp_path) -> None:

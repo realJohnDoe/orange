@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections import Counter
 from dataclasses import replace
 
 import pytest
@@ -294,6 +295,35 @@ def test_split_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
         assert c.split_bits == pytest.approx(rebuilt, abs=1e-6)
         checked += 1
     assert checked, f"{repo} has no splittable container, so this proves nothing"
+
+
+def test_verdict_separates_earning_neutral_and_costing_directories(corpus_graph) -> None:
+    for repo in ["zod", "vite", "date-fns", "tanstack-router"]:
+        census = containers(corpus_graph(repo))
+        by_verdict = Counter(c.verdict for c in census)
+        assert sum(by_verdict.values()) == len(census)
+        # The actionable set is small in every reference repo; if this ever
+        # stops being true the tool has become a rewrite proposal, not a linter.
+        assert by_verdict["costs"] / len(census) < 0.15
+        # And the neutral middle is the biggest or second-biggest group: most
+        # directory boundaries are addressing-neutral, which is the ceiling on
+        # what the dependency graph can say about placement at all.
+        assert by_verdict["neutral"] > 0
+
+
+def test_neutral_directories_are_pass_throughs(corpus_graph) -> None:
+    # log2 telescopes exactly when a container partitions nothing, so a neutral
+    # verdict should almost always mean "one child, or its parent's only child".
+    g = corpus_graph("date-fns")
+    tree = branching(g)
+    neutral = [c for c in containers(g) if c.verdict == "neutral"]
+    pass_through = [
+        c
+        for c in neutral
+        if c.children == 1 or tree[tuple(c.dir.split("/"))[:-1]] == 1
+    ]
+    assert len(neutral) > 800
+    assert len(pass_through) == len(neutral)
 
 
 def test_a_container_with_one_component_has_no_split_to_make() -> None:

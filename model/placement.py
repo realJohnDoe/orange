@@ -253,6 +253,31 @@ class Container:
     split_bits: float
 
     @property
+    def verdict(self) -> str:
+        """`earns` / `neutral` / `costs` -- the C-free reading of dissolve_bits.
+
+        The three are qualitatively different findings and collapsing them loses
+        the only actionable one:
+
+        - **earns** -- dissolving this directory would make addressing more
+          expensive. It is buying encapsulation. Keep it for any C below what it
+          earns.
+        - **neutral** -- dissolving it changes the edge term by exactly nothing.
+          Almost always a pass-through: the directory has one child, or it is its
+          parent's only child, so it partitions nothing and log2 telescopes
+          (`log2(k) = log2(m) + log2(k/m)`, plan.md's split-neutrality). The
+          dependency graph has no opinion on these, in either direction. C alone
+          decides them, which is why C's *sign* matters and its magnitude does
+          not.
+        - **costs** -- dissolving it would make addressing strictly cheaper. No
+          value of C saves it. This is the actionable set, and it is small: 2-10%
+          of directories across the reference corpus.
+        """
+        if self.dissolve_bits > _EPSILON:
+            return "earns"
+        return "neutral" if self.dissolve_bits >= -_EPSILON else "costs"
+
+    @property
     def c_max(self) -> float:
         """Largest C at which this directory is still worth keeping."""
         return self.dissolve_bits
@@ -330,6 +355,7 @@ def container_stability(
     wants_split = [x for x in census if c < x.c_min - _EPSILON]
     wants_dissolve = [x for x in census if c > x.c_max + _EPSILON]
     never = [x for x in census if x.c_min > x.c_max + _EPSILON]
+    verdicts = Counter(x.verdict for x in census)
     return {
         "c": c,
         "containers": len(census),
@@ -339,6 +365,13 @@ def container_stability(
         "wants_split": len(wants_split),
         "wants_dissolve": len(wants_dissolve),
         "never_stable": len(never),
+        # C-free, so identical at every C in a sweep. Reported alongside anyway:
+        # `costs` is the actionable set and the reader should see it next to the
+        # C-dependent numbers rather than have to go find it.
+        "earns": verdicts["earns"],
+        "neutral": verdicts["neutral"],
+        "costs": verdicts["costs"],
+        "costs_fraction": verdicts["costs"] / len(census) if census else None,
     }
 
 
