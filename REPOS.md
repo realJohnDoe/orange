@@ -1,7 +1,8 @@
 # The corpus, repo by repo
 
-Companion to [plan.md](plan.md), which holds the model, the reasoning and the PR queue. This file
-holds what each repo actually taught us. Regenerate the numbers with:
+The per-repo reference. [plan.md](plan.md) holds the model, the reasoning and the PR queue;
+[FINDINGS.md](FINDINGS.md) holds what running it taught us that is not about any one repo. This
+file is what each individual repo contributed. Regenerate the numbers with:
 
 ```bash
 uv run python -m report.run --output report/out/all
@@ -9,9 +10,14 @@ uv run python -m report.run --output report/out/all
 
 **Every number below is the spliced, re-rooted variant** (`report/out/all`) unless it says
 otherwise — barrels spliced to their real targets, and the shared checkout prefix
-(`packages/zod/src`, `src/requests`, …) stripped so the root is where the code is. plan.md's older
-tables are unspliced and un-re-rooted, so they will not match; the variant matters more than any
-single figure here.
+(`packages/zod/src`, `src/requests`, …) stripped so the root is where the code is.
+
+**The variant matters more than any single figure.** plan.md's remaining per-repo tables are raw
+extraction or historical, and identically-named columns differ sharply: zod is 601 edges raw
+against 2085 spliced, 22.8% unresolved against 7.9%, compression ratio 2.76 against 1.39. Splicing
+a barrel replaces one cheap edge to a face with an edge to everything behind it, so counts rise and
+costs move. If a number here disagrees with one there, check the variant before assuming either is
+stale.
 
 ## At a glance
 
@@ -32,7 +38,7 @@ be dissolved but it can certainly gain a subdirectory, which is the only structu
 three flat Python repos have. `earns / neutral / costs` is the per-directory verdict from
 `containers.csv`: does deleting this
 directory and moving its children up make addressing more expensive, change nothing, or make it
-cheaper? See plan.md, "PR 4c — as built". `ratio` is bits spent over the conditional-entropy floor;
+cheaper? See [FINDINGS.md](FINDINGS.md). `ratio` is bits spent over the conditional-entropy floor;
 1.0 is an unreachable asymptote, and it is the only figure here that is comparable across repos.
 
 ---
@@ -54,7 +60,7 @@ an optimal code for its own dependency graph.
   measuring test placement.
 - **`v4/locales` is the corpus's largest `costs` verdict (−799 bits) and is completely
   legitimate** — 52 locale files, 50 components, 1256 external entries, 2 internal edges. This one
-  directory is the reason plan.md now treats taxonomy-vs-junk-drawer as the blocking question.
+  directory is why taxonomy-vs-junk-drawer is now the blocking question ([FINDINGS.md](FINDINGS.md)).
 - Barrel splicing moves zod more than any other repo (56/43/1/0 → 13/86/0/0): its internal code
   really does route through its own barrels, unlike date-fns.
 
@@ -64,8 +70,8 @@ an optimal code for its own dependency graph.
 makes directories into filename prefixes.
 
 - **854 of its 1292 directories have exactly one child, carry exactly 0 bits between them, and
-  consume 16.7% of the entire objective as pure `C` overhead.** This is plan.md's named
-  falsification check and it passes cleanly: zod and vite look nothing like this.
+  consume 16.7% of the entire objective as pure `C` overhead.** This is the named falsification
+  check from [plan.md](plan.md) and it passes cleanly: zod and vite look nothing like this.
 - **Worst compression ratio in the corpus by far (3.34 against 1.39–1.99).** It spends 3.3× the
   bits its dependency graph requires. The convention is legible to humans and expensive to address.
 - 92 of the corpus's 98 `costs` verdicts are date-fns's, and nearly all are its `_lib` convention
@@ -92,8 +98,9 @@ makes directories into filename prefixes.
   human would plausibly accept, behind only zod's structural `v4` cut.
 - 62 earns / 64 neutral — the cleanest illustration that a real tree splits roughly half and half
   between directories doing addressing work and directories doing none.
-- Highest unresolved-import ratio (29.8%), from monorepo-internal imports the extractor can't see
-  without `node_modules`. Under the 50% flag threshold but the worst in the corpus.
+- Highest unresolved-import ratio in the corpus — 27.8% at extraction, 29.8% after splicing — from
+  monorepo-internal imports the extractor can't see without `node_modules`. Under the 50% flag
+  threshold, but the worst here.
 
 ### tanstack-router — two packages, and the worst local optimality
 
@@ -150,7 +157,7 @@ asking the one question a flat repo has. With the root in the census:
 candidates falls as `C` rises. At any `C > 0` requests has 3, rich 3 and flask 4.)
 
 rich's second candidate is a coherent progress-display cluster. Whether these are *good* advice is
-the adjudication question (plan.md, PR 7) — but "the Python repos say nothing" was partly an
+the adjudication question ([plan.md](plan.md), PR 7) — but "the Python repos say nothing" was partly an
 artifact of which containers were being priced.
 
 **Why they are flat is not a fact about Python.** Three things compound:
