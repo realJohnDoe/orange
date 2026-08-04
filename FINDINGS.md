@@ -50,7 +50,8 @@ subdirectory", was never asked. The root is now in the census with `dissolve_bit
 verdict `root`, priced for splits only. requests turns out to have 3 paying candidates and rich 3
 (at any `C > 0`; 2 and 3 at the default `C = 8`), including a −60-bit proposal to pull `live.py`,
 `progress.py`, `spinner.py`, `status.py`, `_spinners.py` and `filesize.py` into one directory — a
-coherent cluster in a repo this document had written off. Whether it is *good* advice is PR 7's question, but "no opinion" was an artifact of
+coherent cluster in a repo this document had written off. Whether it is *good* advice is PR 7's
+question, but "no opinion" was an artifact of
 the census, not a result. The cause is not Python but *small library* Python: a package is both the unit of
 distribution and the unit of import, so subdividing one is a breaking API change, and `__init__.py`
 re-export makes flat cheap. The corpus was selected for entrypoint count and call-graph depth; the
