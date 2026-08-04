@@ -74,6 +74,23 @@ class Move:
         return self.delta_edges - c * self.containers_removed
 
 
+@dataclass(frozen=True, slots=True)
+class Split:
+    """One candidate subdirectory: which children move down, and what it costs.
+
+    Exactly one container appears, so the proposal pays while `C < -bits` --
+    no group count to divide by.
+    """
+
+    members: tuple[str, ...]
+    bits: float
+    kind: str
+
+    def delta(self, c: float) -> float:
+        """Change in the total objective at this C. Negative means it pays."""
+        return self.bits + c
+
+
 def move_frontier(graph: Graph, freeze: Sequence[str] = ()) -> dict[str, tuple[Move, ...]]:
     """Per movable file, the cheapest move for each number of containers it empties.
 
@@ -239,11 +256,12 @@ class Container:
     it into its parent changes the edge term by -dissolve_bits and the structure
     term by -C, so it survives exactly while C <= dissolve_bits.
 
-    `split_bits` is the change in edge bits from the best subdirectory this
-    container could gain (see best_split), and `split_members` names the
-    children that would move into it -- so a report can say *which files*
-    belong in a subdirectory, not merely that some do. One new container is
-    created, so the split pays while C < -split_bits.
+    `splits` holds every candidate subdirectory that pays at some C, cheapest
+    first, each naming the children that would move down -- so a report can say
+    *which files* belong in a subdirectory rather than only that some do.
+    Several are kept on purpose: both sides of a cut are usually real
+    proposals, and deciding which one a human would accept is a naming
+    question, not a bit-counting one.
     """
 
     dir: str
@@ -251,11 +269,19 @@ class Container:
     components: int
     internal_edges: int
     external_entries: int
-    dissolve_bits: float
-    split_bits: float
-    split_size: int
-    split_kind: str
-    split_members: tuple[str, ...]
+    dissolve_bits: float | None
+    splits: tuple[Split, ...]
+
+    @property
+    def is_root(self) -> bool:
+        """The repo root, which exists in every candidate layout and cannot dissolve.
+
+        It is in the census anyway, because for a flat repo "should the root gain
+        a subdirectory" is the *only* structural question there is -- requests
+        has 19 files and no directories at all, and skipping the root meant the
+        tool had nothing whatever to say about it.
+        """
+        return self.dissolve_bits is None
 
     @property
     def verdict(self) -> str:
@@ -278,6 +304,8 @@ class Container:
           value of C saves it. This is the actionable set, and it is small: 2-10%
           of directories across the reference corpus.
         """
+        if self.dissolve_bits is None:
+            return "root"
         if self.dissolve_bits > _EPSILON:
             return "earns"
         return "neutral" if self.dissolve_bits >= -_EPSILON else "costs"
@@ -285,15 +313,20 @@ class Container:
     @property
     def c_max(self) -> float:
         """Largest C at which this directory is still worth keeping."""
-        return self.dissolve_bits
+        return math.inf if self.dissolve_bits is None else self.dissolve_bits
+
+    @property
+    def split_bits(self) -> float:
+        """Edge-bit change of the cheapest candidate subdirectory, 0.0 if none."""
+        return self.splits[0].bits if self.splits else 0.0
 
     @property
     def c_min(self) -> float:
         """Smallest C at which this directory resists gaining a subdirectory.
 
-        Extracting a subset creates exactly one container, so the split pays
-        while `C < -split_bits` -- no division by a group count, because there
-        is only ever one new directory.
+        Extracting a subset creates exactly one container, so a split pays while
+        `C < -bits` -- no division by a group count, because there is only ever
+        one new directory.
         """
         return max(0.0, -self.split_bits)
 
@@ -305,8 +338,10 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
     """Every non-root directory, priced for dissolution and for splitting.
 
     Frozen directories are skipped: their shape is declared rather than derived,
-    so they are not evidence either way about C. The root is skipped because it
-    has no parent to dissolve into and exists in every candidate layout.
+    so they are not evidence either way about C. The root is included but never
+    priced for dissolution -- it has no parent and exists in every candidate
+    layout -- so its dissolve_bits is None and its verdict is "root". Its
+    *splits* are real and, in a flat repo, the only finding available.
     """
     tree = branching(graph)
     charge = charge_counts(graph)
@@ -315,9 +350,19 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
 
     out: list[Container] = []
     for d in sorted(tree):
-        if not d or d in frozen_dirs:
+        if d in frozen_dirs:
             continue
         k = tree[d]
+        if not d:
+            out.append(
+                Container(
+                    dir="",
+                    children=k,
+                    dissolve_bits=None,
+                    **split_candidates(children[d], internal[d], external[d], k),
+                )
+            )
+            continue
         parent = d[:-1]
         p = tree[parent]
         # Dissolving d moves its k children up into parent, which grows from p
@@ -335,7 +380,7 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
                 dir="/".join(d),
                 children=k,
                 dissolve_bits=dissolve,
-                **best_split(children[d], internal[d], external[d], k),
+                **split_candidates(children[d], internal[d], external[d], k),
             )
         )
     return out
@@ -359,6 +404,10 @@ def container_stability(
     """
     if census is None:
         census = containers(graph, freeze)
+    # The root is in the census for its splits, but the earns/neutral/costs
+    # judgement is about directories that could be dissolved, and the objective's
+    # |containers| excludes the root too.
+    census = [x for x in census if not x.is_root]
     stable = [x for x in census if x.stable(c)]
     wants_split = [x for x in census if c < x.c_min - _EPSILON]
     wants_dissolve = [x for x in census if c > x.c_max + _EPSILON]
@@ -448,6 +497,9 @@ def extract_bits(
     s = len(subset)
     if not 1 <= s <= k - 1:
         return 0.0
+    # s == 1 falls out as exactly 0.0 rather than being special-cased: the
+    # remainder is k - 1 + 1 = k, so the parent swaps a file child for a
+    # directory child and every term below is log2(k * 1 / k).
     remainder = k - s + 1
     bits = 0.0
     for child, count in entries.items():
@@ -462,7 +514,7 @@ def extract_bits(
     return bits
 
 
-def best_split(
+def split_candidates(
     members: set[Child], links: list[tuple[Child, Child]], entries: Counter[Child], k: int
 ) -> dict[str, Any]:
     """The cheapest subdirectory this container could gain, among candidates searched.
@@ -504,31 +556,31 @@ def best_split(
         low = {c for c in members if fiedler[c] <= at}
         candidates += [(name, low), (name, members - low)]
 
-    best: set[Child] = set()
-    bits = 0.0
-    kind = "none"
+    found: dict[frozenset[Child], Split] = {}
     for name, subset in candidates:
-        # The new subdirectory has to be the smaller side. Extracting a majority
-        # is priced perfectly well and is sometimes even the cheaper tree, but it
-        # does not mean what the recommendation says: moving 382 of date-fns's
-        # 398 `fp` children into a box is really "promote the other 16", which
-        # is a move, not a subdirectory. Requiring the minority keeps the
-        # proposal and its description the same operation -- and loses nothing,
-        # because both sides of every cut are candidates, so the interesting
-        # half is still reachable.
-        if not 2 <= len(subset) <= k // 2:
+        # No shape constraints. A single child prices at exactly 0.0 -- the
+        # parent swaps a file for a directory, so its branching is unchanged,
+        # and the new directory's log2(1) is zero -- so it is +C and never pays,
+        # without needing to be excluded. And a *majority* subset is a perfectly
+        # real proposal: burying 382 cold files so 16 hot ones sit at the top is
+        # the same tree as promoting the 16, and which phrasing is better advice
+        # is not something the bit count knows. Both sides of every cut are
+        # offered and ranked; choosing among them is a judgement, and judgement
+        # is what the naming pass is for.
+        if not subset or len(subset) > k - 1:
             continue
-        candidate = extract_bits(subset, links, entries, k)
-        if candidate < bits:
-            best, bits, kind = subset, candidate, name
+        bits = extract_bits(subset, links, entries, k)
+        if bits >= -_EPSILON:
+            continue
+        key = frozenset(subset)
+        if key not in found or bits < found[key].bits:
+            found[key] = Split(tuple(sorted(_label(c) for c in subset)), bits, name)
+    ranked = tuple(sorted(found.values(), key=lambda s: (s.bits, s.members)))
     return {
         "components": len(set(components.values())),
         "internal_edges": len(links),
         "external_entries": sum(entries.values()),
-        "split_bits": bits,
-        "split_size": len(best),
-        "split_kind": kind,
-        "split_members": tuple(sorted(_label(c) for c in best)),
+        "splits": ranked,
     }
 
 

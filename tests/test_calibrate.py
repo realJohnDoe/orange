@@ -135,9 +135,11 @@ def test_best_shared_c_weights_repos_equally() -> None:
 
 def test_earnings_counts_only_directories_worth_more_than_zero_bits() -> None:
     census = containers(plan_md_tree())
+    priced = [c for c in census if not c.is_root]
     e = earnings(census)
-    assert e["containers"] == len(census)
-    assert e["earning"] == sum(1 for c in census if c.dissolve_bits > 0)
+    # The root has no dissolve price, so it is not part of the earnings census.
+    assert e["containers"] == len(priced) < len(census)
+    assert e["earning"] == sum(1 for c in priced if c.c_max > 0)
     if e["earning"]:
         assert e["p25"] <= e["median"] <= e["p75"]
 
