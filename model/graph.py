@@ -34,7 +34,7 @@ def filter_nodes(graph: Graph, exclude: Sequence[str]) -> Graph:
     """
     if not exclude:
         return graph
-    dropped = {n.id for n in graph.nodes if _matches_any(n.id, exclude)}
+    dropped = {n.id for n in graph.nodes if matches_any(n.id, exclude)}
     if not dropped:
         return graph
     nodes = tuple(
@@ -149,7 +149,13 @@ def value_edges_only(graph: Graph) -> Graph:
     return replace(graph, nodes=nodes)
 
 
-def _matches_any(node_id: str, patterns: Sequence[str]) -> bool:
+def matches_any(node_id: str, patterns: Sequence[str]) -> bool:
+    """Does this node id match any of these globs? Shared by --exclude and --freeze.
+
+    Public because model.placement needs the identical matching semantics: the
+    two flags select different things to *do* with a file, not different ways of
+    naming it (plan.md, PR 4c).
+    """
     path = PurePosixPath(node_id)
     return any(path.full_match(p) for p in patterns)
 
