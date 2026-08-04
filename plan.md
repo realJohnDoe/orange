@@ -645,7 +645,7 @@ The three findings all fail the same way and need the same judgement call:
 | `splits` — these files belong in a subdirectory | both sides of a cut are offered and at most one is sensible | which candidate, if any? |
 | `movers` — this file is in the wrong directory | large-directory eviction pressure makes every member of a big directory want out | real, or an artifact of the objective? |
 
-**Why it is cheap:** the candidate set exists. `containers.csv` (98 `costs` rows), `splits.csv` (28
+**Why it is cheap:** the candidate set exists. `containers.csv` (98 `costs` rows), `splits.csv` (39
 ranked proposals) and `movers.csv` are already generated, and the naming pass has to run over these
 same groups regardless, so the adjudicator and the namer are one component.
 
@@ -972,17 +972,18 @@ right shape for a linter. Read them:
 into it*. This is the most legible output the tool produces, because it names files rather than
 scoring a directory. **All paying candidates are emitted rather than one winner**: both sides of a
 cut are usually real proposals, and which one a maintainer would accept is a naming judgement, so
-the consumer that does the naming should do the picking. 28 candidates across the corpus; the two
-largest:
+the consumer that does the naming should do the picking. **39 candidates across 19 directories**;
+the two largest:
 
 | directory | proposal | Δ bits |
 | --- | --- | --- |
-| vite `node` | move 15 of 30 down — `baseEnvironment.ts`, `build.ts`, `config.ts`, `constants.ts`, `environment.ts`, `optimizer/`, … | −373 |
-| tanstack `react-router/src` | move 23 of 46 down — `Asset.tsx`, `ClientOnly.tsx`, `HeadContent.tsx`, `Match.tsx`, `RouterProvider.tsx`, … | −43 |
+| zod `v4` | move 4 of 5 down — `classic/`, `core/`, `locales/`, `mini/` | −661 |
+| vite `node` | move 15 of 30 down — `baseEnvironment.ts`, `build.ts`, `config.ts`, `constants.ts`, `environment.ts`, `__tests__/`, … | −381 |
+| tanstack `react-router/src` | move 23 of 46 down — `Asset.tsx`, `ClientOnly.tsx`, `HeadContent.tsx`, `Match.tsx`, `RouterProvider.tsx`, … | −51 |
 
-Both are cases **no earlier version of this machinery could produce**: each directory is a single
-connected component, so the component-partition search proposed nothing for either and reported
-them as unsplittable.
+The vite and tanstack ones are cases **no earlier version of this machinery could produce**: each
+directory is a single connected component, so the component-partition search proposed nothing for
+either and reported them as unsplittable.
 
 Whether the cuts are *good* is a separate question this project cannot yet answer. The tanstack
 proposal is component-heavy — 20 of the 23 moved files are `.tsx` — but 15 more `.tsx` files stay

@@ -17,17 +17,19 @@ single figure here.
 
 | repo | lang | files | edges | dirs | earns / neutral / costs | wants a subdir | locally optimal | int. cost mean | bits/edge | ratio | depth range |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| zod | ts | 282 | 2085 | 16 | 10 / 4 / **2** | 4 | 60% | 0.87 | 6.96 | 1.39 | 0–4 |
-| date-fns | ts | 1491 | 4102 | 1292 | 345 / 855 / **92** | 4 | 27% | 1.04 | 7.49 | 3.34 | 0–4 |
-| vite | ts | 388 | 987 | 129 | 62 / 64 / **3** | 4 | 44% | 0.39 | 5.60 | 1.93 | 1–8 |
+| zod | ts | 282 | 2085 | 16 | 10 / 4 / **2** | 5 | 60% | 0.87 | 6.96 | 1.39 | 0–4 |
+| date-fns | ts | 1491 | 4102 | 1292 | 345 / 855 / **92** | 5 | 27% | 1.04 | 7.49 | 3.34 | 0–4 |
+| vite | ts | 388 | 987 | 129 | 62 / 64 / **3** | 5 | 44% | 0.39 | 5.60 | 1.93 | 1–8 |
 | tanstack-router | ts | 113 | 396 | 9 | 4 / 4 / **1** | 1 | 9% | 0.29 | 5.61 | 1.99 | 2–4 |
-| flask | py | 23 | 91 | 2 | 2 / 0 / 0 | 0 | 52% | 0.15 | 4.32 | 1.75 | 0–1 |
-| rich | py | 100 | 419 | 1 | 1 / 0 / 0 | 0 | 71% | 0.00 | 6.29 | 2.16 | 0–1 |
-| requests | py | 19 | 73 | **0** | 0 / 0 / 0 | 0 | 100% | 0.00 | 4.25 | 1.60 | 0 |
+| flask | py | 23 | 91 | 2 | 2 / 0 / 0 | 1 | 52% | 0.15 | 4.32 | 1.75 | 0–1 |
+| rich | py | 100 | 419 | 1 | 1 / 0 / 0 | 1 | 71% | 0.00 | 6.29 | 2.16 | 0–1 |
+| requests | py | 19 | 73 | **0** | 0 / 0 / 0 | 1 | 100% | 0.00 | 4.25 | 1.60 | 0 |
 
 `wants a subdir` counts directories from `splits.csv` with at least one paying proposal to move
 some of their children down into a new subdirectory at `C = 8`; the file ranks every candidate, so
-there are more proposals than directories (28 across 13). `earns / neutral / costs` is the per-directory verdict from
+there are more proposals than directories (**39 across 19**). The repo root counts here — it cannot
+be dissolved but it can certainly gain a subdirectory, which is the only structural question the
+three flat Python repos have. `earns / neutral / costs` is the per-directory verdict from
 `containers.csv`: does deleting this
 directory and moving its children up make addressing more expensive, change nothing, or make it
 cheaper? See plan.md, "PR 4c — as built". `ratio` is bits spent over the conditional-entropy floor;
@@ -86,7 +88,8 @@ makes directories into filename prefixes.
 - **`node` is the corpus's clearest missing subdirectory**: 30 children, 585 internal edges, and
   exactly *one* connected component — so the cohesion diagnostic and the original
   component-partition split search both had nothing to say about it. The spectral cut proposes
-  moving 15 of the 30 down, worth 373 bits, the largest split finding in the corpus.
+  moving 15 of the 30 down, worth 381 edge bits — the largest split proposal in the corpus that a
+  human would plausibly accept, behind only zod's structural `v4` cut.
 - 62 earns / 64 neutral — the cleanest illustration that a real tree splits roughly half and half
   between directories doing addressing work and directories doing none.
 - Highest unresolved-import ratio (29.8%), from monorepo-internal imports the extractor can't see
@@ -108,7 +111,8 @@ makes directories into filename prefixes.
 - Zero face-hits: nothing enters a directory through an `index.ts`. Its packages expose their
   surface differently from zod's.
 - **A flat 46-file directory that the split search wants halved.** `react-router/src` holds 46
-  children in one connected component, and the proposal moves 23 of them down (−43 bits). The
+  children in one connected component, and the top proposal moves 23 of them down (−51 edge bits,
+  of four ranked candidates). The
   moved side is component-heavy — 20 of the 23 are `.tsx` — but **15 more `.tsx` files stay
   behind**, so this is a dependency cluster that happens to skew toward components, not a
   components/non-components separation. Whether a maintainer would recognise the cut is exactly
@@ -136,11 +140,14 @@ and `depth_histogram`'s `informative` gate trips at modal share 1.00.
 skipped the repo root — correctly reasoning that a root cannot be dissolved, but thereby never
 asking the one question a flat repo has. With the root in the census:
 
-| repo | root children | paying split candidates | best proposal |
+| repo | root children | paying candidates at `C = 8` | best proposal |
 | --- | --- | --- | --- |
-| requests | 19 | 3 | −41 bits, 10 of 19 |
+| requests | 19 | 2 | −41 bits, 10 of 19 |
 | rich | 78 | 3 | −93 bits, 39 of 78; and −60 bits for `live`/`progress`/`spinner`/`status`/`_spinners`/`filesize` |
-| flask | 19 | 4 | −19 bits, 10 of 19 |
+| flask | 19 | 2 | −19 bits, 10 of 19 |
+
+(Bits are the edge-term change; a proposal pays while `C < −bits`, so the count of *paying*
+candidates falls as `C` rises. At any `C > 0` requests has 3, rich 3 and flask 4.)
 
 rich's second candidate is a coherent progress-display cluster. Whether these are *good* advice is
 the adjudication question (plan.md, PR 7) — but "the Python repos say nothing" was partly an
