@@ -205,11 +205,12 @@ def earnings(census: list[Container]) -> dict[str, Any]:
     about C: flattening them into their parent would already be cheaper in edge
     bits alone.
     """
-    earned = sorted(x.dissolve_bits for x in census if x.dissolve_bits > 0)
+    priced = [x for x in census if not x.is_root]
+    earned = sorted(x.c_max for x in priced if x.c_max > 0)
     return {
-        "containers": len(census),
+        "containers": len(priced),
         "earning": len(earned),
-        "earning_fraction": len(earned) / len(census) if census else None,
+        "earning_fraction": len(earned) / len(priced) if priced else None,
         "p25": earned[len(earned) // 4] if earned else None,
         "median": earned[len(earned) // 2] if earned else None,
         "p75": earned[3 * len(earned) // 4] if earned else None,

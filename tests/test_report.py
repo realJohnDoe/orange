@@ -257,10 +257,13 @@ def test_main_writes_containers_csv_worst_first(tmp_path) -> None:
     out = tmp_path / "all"
     main(output=out, repo=["vite"])
     rows = list(csv.DictReader((out / "containers.csv").open(encoding="utf-8")))
-    bits = [float(r["dissolve_bits"]) for r in rows]
+    priced = [r for r in rows if r["verdict"] != "root"]
+    bits = [float(r["dissolve_bits"]) for r in priced]
     assert bits == sorted(bits)  # the actionable `costs` rows sit at the top
     assert rows[0]["verdict"] == "costs"
-    assert {r["verdict"] for r in rows} <= {"costs", "neutral", "earns"}
+    assert {r["verdict"] for r in rows} <= {"costs", "neutral", "earns", "root"}
+    # The root is in the file for its splits, and sorts last: it cannot dissolve.
+    assert rows[-1]["verdict"] == "root" and rows[-1]["dissolve_bits"] == ""
 
 
 def test_main_reroot_removes_the_shared_prefix_from_the_report(tmp_path) -> None:

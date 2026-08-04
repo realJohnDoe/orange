@@ -269,8 +269,19 @@ class Container:
     components: int
     internal_edges: int
     external_entries: int
-    dissolve_bits: float
+    dissolve_bits: float | None
     splits: tuple[Split, ...]
+
+    @property
+    def is_root(self) -> bool:
+        """The repo root, which exists in every candidate layout and cannot dissolve.
+
+        It is in the census anyway, because for a flat repo "should the root gain
+        a subdirectory" is the *only* structural question there is -- requests
+        has 19 files and no directories at all, and skipping the root meant the
+        tool had nothing whatever to say about it.
+        """
+        return self.dissolve_bits is None
 
     @property
     def verdict(self) -> str:
@@ -293,6 +304,8 @@ class Container:
           value of C saves it. This is the actionable set, and it is small: 2-10%
           of directories across the reference corpus.
         """
+        if self.dissolve_bits is None:
+            return "root"
         if self.dissolve_bits > _EPSILON:
             return "earns"
         return "neutral" if self.dissolve_bits >= -_EPSILON else "costs"
@@ -300,7 +313,7 @@ class Container:
     @property
     def c_max(self) -> float:
         """Largest C at which this directory is still worth keeping."""
-        return self.dissolve_bits
+        return math.inf if self.dissolve_bits is None else self.dissolve_bits
 
     @property
     def split_bits(self) -> float:
@@ -325,8 +338,10 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
     """Every non-root directory, priced for dissolution and for splitting.
 
     Frozen directories are skipped: their shape is declared rather than derived,
-    so they are not evidence either way about C. The root is skipped because it
-    has no parent to dissolve into and exists in every candidate layout.
+    so they are not evidence either way about C. The root is included but never
+    priced for dissolution -- it has no parent and exists in every candidate
+    layout -- so its dissolve_bits is None and its verdict is "root". Its
+    *splits* are real and, in a flat repo, the only finding available.
     """
     tree = branching(graph)
     charge = charge_counts(graph)
@@ -335,9 +350,19 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
 
     out: list[Container] = []
     for d in sorted(tree):
-        if not d or d in frozen_dirs:
+        if d in frozen_dirs:
             continue
         k = tree[d]
+        if not d:
+            out.append(
+                Container(
+                    dir="",
+                    children=k,
+                    dissolve_bits=None,
+                    **split_candidates(children[d], internal[d], external[d], k),
+                )
+            )
+            continue
         parent = d[:-1]
         p = tree[parent]
         # Dissolving d moves its k children up into parent, which grows from p
@@ -379,6 +404,10 @@ def container_stability(
     """
     if census is None:
         census = containers(graph, freeze)
+    # The root is in the census for its splits, but the earns/neutral/costs
+    # judgement is about directories that could be dissolved, and the objective's
+    # |containers| excludes the root too.
+    census = [x for x in census if not x.is_root]
     stable = [x for x in census if x.stable(c)]
     wants_split = [x for x in census if c < x.c_min - _EPSILON]
     wants_dissolve = [x for x in census if c > x.c_max + _EPSILON]

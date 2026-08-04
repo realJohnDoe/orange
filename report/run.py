@@ -255,7 +255,7 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                 "c_max",
             ]
         )
-        for repo, x in sorted(census, key=lambda row: (row[1].dissolve_bits, row[0], row[1].dir)):
+        for repo, x in sorted(census, key=lambda row: (row[1].c_max, row[0], row[1].dir)):
             writer.writerow(
                 [
                     repo,

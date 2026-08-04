@@ -280,6 +280,8 @@ def test_dissolve_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
     g = corpus_graph(repo)
     base = edge_bits(g)
     for c in containers(g):
+        if c.is_root:
+            continue
         d = tuple(c.dir.split("/"))
         assert c.dissolve_bits == pytest.approx(edge_bits(apply_dissolve(g, d)) - base, abs=1e-6)
 
@@ -291,7 +293,7 @@ def test_split_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
     base = edge_bits(g)
     checked = 0
     for c in containers(g):
-        d = tuple(c.dir.split("/"))
+        d = tuple(c.dir.split("/")) if c.dir else ()
         for split in c.splits:
             rebuilt = edge_bits(apply_extract(g, d, set(split.members))) - base
             assert split.bits == pytest.approx(rebuilt, abs=1e-6)
@@ -315,7 +317,7 @@ def test_arbitrary_subsets_price_exactly(corpus_graph, repo: str) -> None:
     for c in containers(g):
         if c.children < 4:
             continue
-        d = tuple(c.dir.split("/"))
+        d = tuple(c.dir.split("/")) if c.dir else ()
         subset = {ch for i, ch in enumerate(sorted(members[d], key=str)) if i % 2}
         predicted = extract_bits(subset, internal[d], external[d], c.children)
         rebuilt = edge_bits(apply_extract(g, d, {_label(ch) for ch in subset})) - base
@@ -326,7 +328,7 @@ def test_arbitrary_subsets_price_exactly(corpus_graph, repo: str) -> None:
 
 def test_verdict_separates_earning_neutral_and_costing_directories(corpus_graph) -> None:
     for repo in ["zod", "vite", "date-fns", "tanstack-router"]:
-        census = containers(corpus_graph(repo))
+        census = [c for c in containers(corpus_graph(repo)) if not c.is_root]
         by_verdict = Counter(c.verdict for c in census)
         assert sum(by_verdict.values()) == len(census)
         # The actionable set is small in every reference repo; if this ever
@@ -375,6 +377,8 @@ def test_two_clusters_wants_a_subdirectory_below_its_c_min() -> None:
 def test_a_container_is_unstable_above_what_it_earns() -> None:
     g = plan_md_tree()
     for c in containers(g):
+        if c.is_root:
+            continue
         assert c.stable(c.c_max * 0.9 + c.c_min * 0.1) or c.c_min > c.c_max
         assert not c.stable(c.c_max * 2 + 1)
 

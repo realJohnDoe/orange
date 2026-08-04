@@ -399,9 +399,18 @@ report/           metrics, baselines, per-repo tables
 
 **The Python corpus is degenerate — and PR 4c made it exact.** After re-rooting, the three Python
 repos have **0, 1 and 2 directories between them**: requests has no tree at all (19 files, all
-siblings, mean integer cost exactly 0.000, local optimality trivially 100%), rich has
-`_unicode_data`, flask has `json/` and `sansio/`. There is nothing here for a tree metric to
-measure. The cause is not Python but *small library* Python: a package is both the unit of
+siblings, mean integer cost exactly 0.000), rich has `_unicode_data`, flask has `json/` and
+`sansio/`. There is nothing here for a metric *about an existing tree* to measure.
+
+**But the tool is not silent on them, and finding that out was a bug fix.** `containers()` skipped
+the repo root, on the reasoning that the root cannot be dissolved and exists in every candidate
+layout. True — and it meant the *only* structural question a flat repo has, "should the root gain a
+subdirectory", was never asked. The root is now in the census with `dissolve_bits = None` and the
+verdict `root`, priced for splits only. requests turns out to have 3 paying candidates and rich 3,
+including a −60-bit proposal to pull `live.py`, `progress.py`, `spinner.py`, `status.py`,
+`_spinners.py` and `filesize.py` into one directory — a coherent cluster in a repo this document
+had written off. Whether it is *good* advice is PR 7's question, but "no opinion" was an artifact of
+the census, not a result. The cause is not Python but *small library* Python: a package is both the unit of
 distribution and the unit of import, so subdividing one is a breaking API change, and `__init__.py`
 re-export makes flat cheap. The corpus was selected for entrypoint count and call-graph depth; the
 axis that turned out to matter is directory-tree depth and branching, which is screenable from
@@ -560,13 +569,11 @@ directory"). Once test placement stops being counted as a directory split, zod's
 *more* cohesive than the raw number suggested, not less. vite moves the same two ways for the same
 reason, more mildly.
 
-**What this does not yet do: re-run the "vs. shuffled" comparison.** The permutation baseline that
-produced the shuffled column above is still the throwaway, unported `baseline.py` logic — porting
-it into real code is PR 4d's job, not 4b's, and no shuffled numbers exist yet for the excluded-test
-graphs. So this correction updates the *real* half of the table only. zod's mean cost moving toward
-the shuffled baseline (0.53 vs. a shuffled 1.54) is suggestive that the margin survives, but "far
-better than random" for the corrected corpus is a claim for 4d to actually verify, not one this PR
-is entitled to make.
+**What this does not do: re-run the "vs. shuffled" comparison.** No shuffled numbers exist for the
+excluded-test graphs, so this correction updates the *real* half of the table only. That comparison
+is now **not going to be made**: PR 4d is dropped, because 4c's absolute tests turned out to be far
+more informative than the margin over a shuffle, and the permutation baseline measures the integer
+cost rather than the objective. The shuffled column above is a historical record.
 
 **Caveat that motivates PR 4c:** random is a weak opponent. Beating a shuffle says the layout is
 not arbitrary; it does not say the layout is *good*. The demanding version is local optimality —
@@ -615,13 +622,75 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **7** — naming as a validator over 4c's `costs` list | The tool's usability now rests on it, the candidate set already exists (`containers.csv`), and it is cheap. Decides the go/no-go more directly than anything else queued | Opus 5 | not started |
-| 2 | **6** — meridian2 | The optimization subject. No longer blocked on `C` being pinned — 4c found it is not identifiable, so meridian2 gets read at the same C-independent numbers as the reference corpus | Opus 5, plan mode | not started |
-| 3 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| 1 | **7** — the adjudication pilot | The tool's usability rests entirely on it and nothing else queued tests it. The candidate set already exists | Opus 5 | not started |
+| 2 | **8** — per-repo configs and a `C` sensitivity table | Turns `C` from a failed calibration into a documented dial, and builds the labelled set PR 7 needs more of | Sonnet 5 | not started, needs 7 |
+| 3 | **9** — corpus expansion, screened on tree shape | More findings to adjudicate, and the direct test of whether flat Python is a size effect or a language effect | Sonnet 5 | not started, needs 8 |
+| — | **6** — meridian2 | Still the point of the exercise, but it is an *application* of the tool and reads as noise until PR 7 says whether the findings are trustworthy | Opus 5, plan mode | deferred until 7 |
 | — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
 | — | **4b** — `report/run.py` with `--exclude` | — | Sonnet 5 | **done** |
-| — | **4c** — `--freeze` + local optimality + calibration of `C` | — | Opus 5 | **done** |
+| — | **4c** — `--freeze`, local optimality, container verdicts, split search | — | Opus 5 | **done** |
 | — | **5a** — TS extractor → zod, date-fns, vite, tanstack-router | — | Sonnet 5 | **done** |
+| — | ~~**4d** — figures + permutation port~~ | **Dropped.** The permutation baseline compared the *integer* cost against a shuffle, and 4c superseded both halves: the integer cost is not the objective, and "better than random" turned out to say almost nothing next to the absolute tests. Porting it would re-validate a result we no longer consider informative. Figures can be drawn when there is a finding worth drawing | — | **dropped** |
+
+### PR 7 — the adjudication pilot
+
+**The question:** can an LLM tell a finding from a false positive? Every open risk in this document
+now routes through that, and no amount of further measurement answers it.
+
+The three findings all fail the same way and need the same judgement call:
+
+| finding | the failure | what adjudication has to decide |
+| --- | --- | --- |
+| `costs` — this directory shouldn't exist | zod's `v4/locales` is the corpus's largest verdict and is a legitimate taxonomy | junk drawer or category? |
+| `splits` — these files belong in a subdirectory | both sides of a cut are offered and at most one is sensible | which candidate, if any? |
+| `movers` — this file is in the wrong directory | large-directory eviction pressure makes every member of a big directory want out | real, or an artifact of the objective? |
+
+**Why it is cheap:** the candidate set exists. `containers.csv` (98 `costs` rows), `splits.csv` (28
+ranked proposals) and `movers.csv` are already generated, and the naming pass has to run over these
+same groups regardless, so the adjudicator and the namer are one component.
+
+**Two signals to compare, not one.** plan.md's original idea was naming alone. PR 4c found a second,
+free, deterministic one — structural equivalence, where a taxonomy's members have near-identical
+neighbourhoods (`v4/locales` and `_unicode_data` both score 1.000) and a junk drawer's are disjoint
+(`shared`, `helpers`, `_lib` all score 0.000). Run both and compare. If the cheap signal reproduces
+the LLM's judgement, ship the cheap one and keep the LLM for naming.
+
+**Acceptance:** a hand-labelled verdict for every `costs` row and every `splits` candidate in the
+corpus, the two signals' agreement with it, and an honest precision/recall. If neither separates
+them, the tool has no usable output and `FINDINGS.md` should say no.
+
+### PR 8 — per-repo configs, and `C` as a dial
+
+**`--exclude` and `--freeze` are per-repo facts and belong in the repo.** Move them out of ad-hoc
+command lines into `corpus/manifest.toml`, so a run is reproducible and the config is reviewable.
+This is the `eslint-config-*` shape, and it is also the honest way to record what each repo needed.
+
+**The size of the config is itself a finding.** plan.md's escape-hatch principle — "do not forbid
+these, *count* them; 3 global namespaces vs 30 is a quality signal" — applies directly. A repo
+needing fifteen freeze patterns has that much convention-governed structure.
+
+**`C` gets a sensitivity table, not a fitted value.** 4c settled that `C` is a per-repo knob with a
+160× spread, so fitting it per repo is worse than useless — it is circular. Choosing the `C` that
+makes a repo look already-optimal guarantees the tool says nothing about it. `C` is a policy dial
+like `max-line-length`: the useful artifact is "at `C = 1` the tool reports these findings, at
+`C = 8` these", so a user picks how opinionated they want it.
+
+### PR 9 — corpus expansion, screened on tree shape
+
+**Screen before extracting.** Directory count, depth range and modal depth share come from
+`git ls-files` alone. Require ≥20 directories, modal depth share <0.6, depth range ≥4. The current
+Python three fail all three tests and contributed nothing; they were chosen for entrypoint count and
+call-graph depth, which turned out not to be the axis that matters.
+
+**Include large Python** — django, sqlalchemy, airflow, home-assistant. grimp already works, so it is
+nearly free, and it is the direct test of whether flat Python is a size effect or a language effect.
+The current evidence cannot separate those.
+
+**Purpose is the evaluation set, not the aggregate percentages.** 1446 directories are already
+priced; the earns/neutral/costs split is not what is short. What is short is *labelled* examples —
+roughly two `costs` candidates per normal repo, so ten repos roughly triples PR 7's evidence.
+
+Go last, because ten more repos without an adjudicator is 200 more findings nobody can judge.
 
 Deferred and explicitly scoped: **symbol-level extraction** (see "Symbol level" below). It is the
 strongest test of the cost-function change but it is an extractor project, not a metrics one, and
@@ -953,20 +1022,6 @@ so this is a discriminator *within* the `costs` list, not a standalone metric. B
 labelled evaluation set it needs is the main argument for enlarging the corpus. See "Open
 questions".
 
-### PR 4d — figures and permutation port
-
-matplotlib, SVG, checked in, fixed figure size and consistent axes: stacked cost histogram across
-repos, depth-vs-fan-in scatter per repo, depth histogram per repo, and the `C` sweep curve from
-4c.
-
-Port the throwaway `baseline.py` permutation logic (shuffle-the-layout, ~200+ iterations, z-score
-against the shuffled distribution) into real code, and extend it to depth-vs-fan-in ρ (shuffle the
-depth vector, count how often `|ρ|` is matched). It already produced the Phase 0 headline; this
-just makes it reproducible.
-
-Last because it is presentation. 4c's absolute compression ratio and local-optimality fraction are
-interpretable without a baseline, which is most of why the permutation machinery mattered.
-
 ### PR 6 — meridian2
 
 meridian2 is the optimization *subject*, not ground truth. What was previously one undifferentiated
@@ -1140,10 +1195,12 @@ blind spot.
   chance on both axes — but no repo tests the "integer cost > 1 is nearly impossible by
   construction" Go case, which was meant to be the answer key for the visibility rule specifically.
   Get a modern Go toolchain, or accept that the verdict rests on TS alone.
-- **The Phase 0 permutation ("vs. shuffled") numbers are still uncorrected.** PR 4b's `--exclude`
-  fixed the *real*-side numbers for zod and vite (see "Confound correction" under Phase 0 results);
-  the shuffled-baseline comparison against the corrected corpus still needs PR 4d's permutation
-  port before "far better than random" can be re-claimed for it.
+- ~~**The Phase 0 permutation ("vs. shuffled") numbers are still uncorrected.**~~ **Retired rather
+  than fixed.** The claim it guarded — "far better than random" — was never re-established for the
+  corrected corpus and no longer matters: 4c showed that beating a shuffle says very little next to
+  the absolute tests, and the permutation baseline runs on the *integer* cost, which is not the
+  objective. PR 4d is dropped rather than deferred. The uncorrected shuffled column stays in "Phase
+  0 results" as a historical record and should not be quoted as current evidence.
 - **The bit cost now has numbers. They are mixed, and the file-level half is weak.** `C` does not
   calibrate, and 40–91% of files sit somewhere the objective would move them. But the
   *directory*-level verdict is not the indictment an earlier draft of this section claimed: only

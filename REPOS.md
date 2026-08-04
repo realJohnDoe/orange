@@ -117,7 +117,7 @@ makes directories into filename prefixes.
 
 ---
 
-## The Python three, and why they say nothing
+## The Python three, and why their *existing* structure says nothing
 
 This is the crispest way to put it. After stripping the checkout prefix, the three Python repos
 have **0, 1 and 2 directories between them**:
@@ -128,11 +128,23 @@ have **0, 1 and 2 directories between them**:
 | rich | 1 (`_unicode_data`) | 77 of 100 |
 | flask | 2 (`json/`, `sansio/`) | 17 of 23 |
 
-Every metric in this project is a statement about a *tree*. There is no tree. requests' mean
-integer cost is exactly 0.000 because every import is between siblings, which costs 0 by
-definition; its local optimality is 100% because there is nowhere else to put anything. These are
-not weak signals, they are the absence of a signal, and `depth_histogram`'s `informative` gate
-exists to say so out loud (requests trips it at modal share 1.00).
+Every metric *about an existing tree* is silent here, because there is no tree. requests' mean
+integer cost is exactly 0.000 since every import is between siblings, which costs 0 by definition,
+and `depth_histogram`'s `informative` gate trips at modal share 1.00.
+
+**The split finding is not silent, though, and that took a bug fix to notice.** `containers()`
+skipped the repo root — correctly reasoning that a root cannot be dissolved, but thereby never
+asking the one question a flat repo has. With the root in the census:
+
+| repo | root children | paying split candidates | best proposal |
+| --- | --- | --- | --- |
+| requests | 19 | 3 | −41 bits, 10 of 19 |
+| rich | 78 | 3 | −93 bits, 39 of 78; and −60 bits for `live`/`progress`/`spinner`/`status`/`_spinners`/`filesize` |
+| flask | 19 | 4 | −19 bits, 10 of 19 |
+
+rich's second candidate is a coherent progress-display cluster. Whether these are *good* advice is
+the adjudication question (plan.md, PR 7) — but "the Python repos say nothing" was partly an
+artifact of which containers were being priced.
 
 **Why they are flat is not a fact about Python.** Three things compound:
 
