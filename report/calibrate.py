@@ -21,8 +21,8 @@ two-sided (model.placement.containers):
 
 - too large, and a directory would rather dissolve into its parent -- the
   addressing it saves does not cover the C it costs;
-- too small, and a directory would rather split into its connected components --
-  the addressing a split would save exceeds the C the new containers cost.
+- too small, and a directory would rather move some of its children down into a
+  new subdirectory -- the addressing that saves exceeds the C the container costs.
 
 Each directory is stable over an interval of C, so the fraction of stable
 directories has a genuine interior maximum, and the three outcomes plan.md lists
@@ -41,6 +41,7 @@ from typing import Annotated, Any
 import typer
 
 from model.graph import filter_nodes
+from model.graph import reroot as reroot_graph
 from model.graph import splice_barrels as splice_all_barrels
 from model.metrics import DEFAULT_C, container_information
 from model.placement import (
@@ -372,6 +373,9 @@ def main(
     splice_barrels: Annotated[
         bool, typer.Option(help="rewire edges through barrel files to their real target")
     ] = True,
+    reroot: Annotated[
+        bool, typer.Option(help="strip the directory prefix every file shares before measuring")
+    ] = True,
     lang: Annotated[str | None, typer.Option(help="only sweep repos in this language")] = None,
     repo: Annotated[list[str], typer.Option(help="only sweep these repos; repeatable")] = [],
     c_min: Annotated[float, typer.Option(help="smallest C on the grid")] = DEFAULT_C_MIN,
@@ -391,6 +395,8 @@ def main(
     single_child: dict[str, dict[str, Any]] = {}
     for graph in graphs:
         g = filter_nodes(graph, exclude)
+        if reroot:
+            g = reroot_graph(g)
         if splice_barrels:
             g = splice_all_barrels(g)
         these, census = repo_rows(g, grid, freeze)

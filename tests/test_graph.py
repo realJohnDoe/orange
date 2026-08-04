@@ -4,7 +4,9 @@ The corpus-level acceptance check for splice_barrels -- reproducing zod's and
 date-fns's recorded cost histograms -- lives in test_corpus_metrics.py.
 """
 
-from model.graph import filter_nodes, splice_barrels, value_edges_only
+import pytest
+
+from model.graph import filter_nodes, reroot, splice_barrels, value_edges_only
 from tests.fixtures.graphs import (
     barrel_chain,
     barrel_cycle,
@@ -158,3 +160,51 @@ def test_value_edges_only_drops_type_edges() -> None:
 def test_value_edges_only_keeps_every_node() -> None:
     original = plan_md_tree()
     assert ids(value_edges_only(original)) == ids(original)
+
+
+# --- reroot ----------------------------------------------------------------
+
+
+def test_reroot_strips_the_prefix_every_file_shares() -> None:
+    g = reroot(
+        graph(
+            node("packages/zod/src/v4/core.ts", imports=("packages/zod/src/v3/old.ts",)),
+            node("packages/zod/src/v3/old.ts"),
+        )
+    )
+    assert ids(g) == {"v4/core.ts", "v3/old.ts"}
+    assert imports_of(g, "v4/core.ts") == ("v3/old.ts",)
+    assert g.roots == (".",)
+
+
+def test_reroot_is_a_no_op_without_a_common_prefix() -> None:
+    original = plan_md_tree()
+    assert reroot(original) == original
+
+
+def test_reroot_stops_at_the_first_branch() -> None:
+    # packages/ has two children, so only it is stripped.
+    g = reroot(
+        graph(
+            node("packages/core/src/a.ts"),
+            node("packages/react/src/b.ts", imports=("packages/core/src/a.ts",)),
+        )
+    )
+    assert ids(g) == {"core/src/a.ts", "react/src/b.ts"}
+
+
+def test_reroot_leaves_the_edge_term_untouched() -> None:
+    # The stripped levels each have exactly one child, and log2(1) = 0, so the
+    # bit cost cannot change -- only the container count and the root branching.
+    from model.metrics import total_bit_cost
+
+    original = graph(
+        node("pkgs/core/src/a.ts", imports=("pkgs/core/src/deep/b.ts",)),
+        node("pkgs/core/src/deep/b.ts"),
+    )
+    assert total_bit_cost(reroot(original), 0.0)["bits"] == pytest.approx(
+        total_bit_cost(original, 0.0)["bits"]
+    )
+    assert total_bit_cost(reroot(original))["containers"] == (
+        total_bit_cost(original)["containers"] - 3
+    )

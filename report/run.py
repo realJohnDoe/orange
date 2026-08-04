@@ -39,10 +39,11 @@ from corpus.sync import load_manifest
 from extractors.classify import is_face
 from extractors.schema import Graph, load
 from model.graph import filter_nodes
+from model.graph import reroot as reroot_graph
 from model.graph import splice_barrels as splice_all_barrels
 from model.metrics import DEFAULT_C, all_metrics, edges
 from model.paths import bit_cost, branching, common_prefix_len, cost, dirs
-from model.placement import local_optimality
+from model.placement import Container, container_stability, containers, local_optimality
 
 GRAPHS_DIR = Path(__file__).resolve().parents[1] / "corpus" / "graphs"
 
@@ -127,11 +128,11 @@ def worst_edges(graph: Graph, tree: dict[tuple[str, ...], int], top_n: int) -> l
 
 def build_report(
     graph: Graph, c: float, top_n: int, freeze: Sequence[str] = ()
-) -> tuple[dict[str, Any], list[WorstEdge], list[dict[str, Any]]]:
-    """all_metrics() plus the unresolved-ratio flag, the worst edges, and the movers.
+) -> tuple[dict[str, Any], list[WorstEdge], list[dict[str, Any]], list[Container]]:
+    """all_metrics() plus the unresolved-ratio flag, the worst edges, movers, containers.
 
-    The mover list is kept out of the metrics dict and returned alongside it:
-    it is per-file detail that belongs in a CSV, while the metrics dict is the
+    The per-file and per-directory detail is kept out of the metrics dict and
+    returned alongside it: those belong in CSVs, while the metrics dict is the
     per-repo summary that gets serialized as JSON.
     """
     metrics = all_metrics(graph, c)
@@ -141,8 +142,10 @@ def build_report(
     placement = local_optimality(graph, c, freeze)
     movers = placement.pop("movers")
     metrics["local_optimality"] = placement
+    census = containers(graph, freeze)
+    metrics["container_stability"] = container_stability(graph, c, freeze, census)
     tree = branching(graph)
-    return metrics, worst_edges(graph, tree, top_n), movers
+    return metrics, worst_edges(graph, tree, top_n), movers, census
 
 
 # name, extractor -- every summary.csv / summary.md column, in display order.
@@ -163,6 +166,9 @@ _SUMMARY_COLUMNS: tuple[tuple[str, Any], ...] = (
     ("locally_optimal", lambda m: m["local_optimality"]["fraction_locally_optimal"]),
     ("frozen_files", lambda m: m["local_optimality"]["frozen_files"]),
     ("single_child_dirs", lambda m: m["container_information"]["single_child_fraction"]),
+    ("dirs_earning", lambda m: m["container_stability"]["earns"]),
+    ("dirs_neutral", lambda m: m["container_stability"]["neutral"]),
+    ("dirs_costing", lambda m: m["container_stability"]["costs"]),
     ("depth_informative", lambda m: m["depth_histogram"]["informative"]),
     ("rho_fanin_ge_1", lambda m: m["depth_vs_fanin"]["rho_fanin_ge_1"]),
     ("unresolved_ratio", lambda m: m["unresolved_ratio"]),
@@ -224,6 +230,72 @@ def write_movers_csv(movers: list[dict[str, Any]], path: Path) -> None:
             writer.writerow(_fmt(m[col]) for col in columns)
 
 
+def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> None:
+    """Every directory priced for its own existence, worst first.
+
+    Ordered by dissolve_bits ascending, so the `costs` verdicts -- the ones no
+    value of C rescues, and the only rows that are a finding rather than a
+    measurement -- are at the top of the file.
+    """
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "repo",
+                "dir",
+                "verdict",
+                "dissolve_bits",
+                "children",
+                "components",
+                "internal_edges",
+                "external_entries",
+                "split_bits",
+                "split_size",
+                "split_kind",
+                "c_min",
+                "c_max",
+            ]
+        )
+        for repo, x in sorted(census, key=lambda row: (row[1].dissolve_bits, row[0], row[1].dir)):
+            writer.writerow(
+                [
+                    repo,
+                    x.dir,
+                    x.verdict,
+                    _fmt(x.dissolve_bits),
+                    x.children,
+                    x.components,
+                    x.internal_edges,
+                    x.external_entries,
+                    _fmt(x.split_bits),
+                    x.split_size,
+                    x.split_kind,
+                    _fmt(x.c_min),
+                    _fmt(x.c_max),
+                ]
+            )
+
+
+def write_splits_csv(census: list[tuple[str, Container]], path: Path, c: float) -> None:
+    """The directories that want subdividing at this C, and which child goes where.
+
+    This is the "these files belong in a subdirectory" finding, and unlike the
+    dissolve verdict it names the members, so the recommendation is actionable
+    rather than merely a score. Ordered by how strongly the split pays.
+    """
+    wanted = [(repo, x) for repo, x in census if x.split_size >= 2 and x.split_bits + c < 0]
+    wanted.sort(key=lambda row: row[1].split_bits)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["repo", "dir", "delta", "split_bits", "size", "of", "kind", "child"])
+        for repo, x in wanted:
+            for child in x.split_members:
+                writer.writerow(
+                    [repo, x.dir, _fmt(x.split_bits + c), _fmt(x.split_bits),
+                     x.split_size, x.children, x.split_kind, child]
+                )
+
+
 def main(
     output: Annotated[Path, typer.Option(help="directory for this run's artifacts")],
     exclude: Annotated[
@@ -239,6 +311,10 @@ def main(
     splice_barrels: Annotated[
         bool,
         typer.Option(help="rewire edges through barrel files to their real target"),
+    ] = True,
+    reroot: Annotated[
+        bool,
+        typer.Option(help="strip the directory prefix every file shares before measuring"),
     ] = True,
     lang: Annotated[
         str | None, typer.Option(help="only include repos in this language (py, ts)")
@@ -260,23 +336,28 @@ def main(
     summary_rows: list[dict[str, Any]] = []
     all_worst: list[WorstEdge] = []
     all_movers: list[dict[str, Any]] = []
+    all_containers: list[tuple[str, Container]] = []
     for graph in graphs:
         g = filter_nodes(graph, exclude)
+        if reroot:
+            g = reroot_graph(g)
         if splice_barrels:
             g = splice_all_barrels(g)
-        metrics, worst, movers = build_report(g, c, top_n, freeze)
+        metrics, worst, movers, census = build_report(g, c, top_n, freeze)
         summary_rows.append(metrics)
         all_worst.extend(worst)
         all_movers.extend(dict(m, repo=g.repo) for m in movers)
+        all_containers.extend((g.repo, x) for x in census)
         (output / f"{g.repo}.json").write_text(
             json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
         )
         flag = " [FLAGGED]" if metrics["flagged"] else ""
-        optimal = metrics["local_optimality"]["fraction_locally_optimal"]
+        stability = metrics["container_stability"]
         print(
             f"{g.repo:16} {metrics['nodes']:5} nodes "
-            f"{metrics['total_bit_cost']['edges']:5} edges "
-            f"{_fmt(optimal):>6} locally optimal{flag}"
+            f"{metrics['total_bit_cost']['edges']:5} edges | dirs "
+            f"{stability['earns']:4} earn {stability['neutral']:4} neutral "
+            f"{stability['costs']:3} cost {stability['wants_split']:3} want splitting{flag}"
         )
 
     summary_rows.sort(key=lambda m: m["repo"])
@@ -284,6 +365,8 @@ def main(
     write_summary_md(summary_rows, output / "summary.md", c)
     write_worst_edges_csv(all_worst, output / "worst-edges.csv")
     write_movers_csv(all_movers, output / "movers.csv")
+    write_containers_csv(all_containers, output / "containers.csv")
+    write_splits_csv(all_containers, output / "splits.csv", c)
 
 
 if __name__ == "__main__":
