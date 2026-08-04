@@ -120,6 +120,63 @@ def total_bit_cost(graph: Graph, c: float = DEFAULT_C) -> dict[str, Any]:
     }
 
 
+def charge_counts(graph: Graph) -> dict[tuple[str, ...], int]:
+    """Per container, how many edges make a selection in it.
+
+    bit_cost charges one log2(branching) term per container on an edge's descent,
+    so summing the other way round gives the identity the whole objective
+    decomposition rests on:
+
+        Sigma_e bit_cost(e)  ==  Sigma_D charge[D] * log2(branching[D])
+
+    That is what lets container_information() attribute the edge term to
+    individual directories, and what lets model.placement reprice every edge a
+    move does not touch with a dot product over a handful of containers instead
+    of a pass over the edge list.
+    """
+    charge: Counter[tuple[str, ...]] = Counter()
+    for u, v, _ in edges(graph):
+        dv = dirs(v)
+        for i in range(common_prefix_len(dirs(u), dv), len(dv) + 1):
+            charge[dv[:i]] += 1
+    return dict(charge)
+
+
+def container_information(graph: Graph, c: float = DEFAULT_C) -> dict[str, Any]:
+    """How much addressing each directory buys for the C bits it costs.
+
+    plan.md's named falsification check for the bit cost: date-fns's
+    one-function-per-directory convention should show up as containers carrying
+    *zero* addressing information -- log2(1) = 0, so a single-child directory
+    can never charge for a selection no matter how many edges descend through it
+    -- while zod and vite should not look like that. If date-fns does not come
+    out that way, the model is wrong.
+
+    single_child_bits is computed rather than hardcoded to 0.0 even though the
+    algebra guarantees it, because it is the claim being checked.
+    """
+    tree = branching(graph)
+    charge = charge_counts(graph)
+    carried = {d: charge.get(d, 0) * math.log2(b) for d, b in tree.items()}
+    interior = [d for d in tree if d]
+    single = [d for d in interior if tree[d] == 1]
+    edge_bits = sum(carried.values())
+    objective = edge_bits + c * len(interior)
+    return {
+        "containers": len(interior),
+        "single_child": len(single),
+        "single_child_fraction": _ratio(len(single), len(interior)),
+        "single_child_bits": sum(carried[d] for d in single),
+        "edge_bits": edge_bits,
+        "structure_bits": c * len(interior),
+        "single_child_structure_bits": c * len(single),
+        "single_child_share_of_objective": _ratio(c * len(single), objective),
+        "median_branching": (
+            float(np.median([tree[d] for d in interior])) if interior else None
+        ),
+    }
+
+
 def conditional_entropy(graph: Graph) -> float:
     """H(v|u) in bits: how much a perfect code would need per edge.
 
@@ -285,6 +342,7 @@ def all_metrics(graph: Graph, c: float = DEFAULT_C) -> dict[str, Any]:
         "nodes": len(graph.nodes),
         "cost_histogram": cost_histogram(graph),
         "total_bit_cost": total_bit_cost(graph, c),
+        "container_information": container_information(graph, c),
         "integer_edge_cost": integer_edge_cost(graph),
         "cross_face_entries": cross_face_entries(graph),
         "depth_vs_fanin": depth_vs_fanin(graph),
@@ -295,6 +353,13 @@ def all_metrics(graph: Graph, c: float = DEFAULT_C) -> dict[str, Any]:
 
 def edges(graph: Graph) -> Iterator[tuple[str, str, bool]]:
     """(importer, target, is_type_only) for every distinct edge, in node order.
+
+    Self-edges are dropped. A file that imports itself -- rich/box.py and
+    rich/live.py are the corpus's only two -- is not a dependency, and under the
+    bit cost it is actively wrong: the formula would charge log2(branching) to
+    address a file from inside itself, a selection nobody makes. Keeping them
+    would also make the objective inconsistent with model.placement, whose move
+    deltas have to reprice exactly the edges the objective counts.
 
     Deduplicated on purpose. Extractors record one entry per import *statement*,
     so a file that imports the same module twice -- typically once as `import
@@ -313,7 +378,7 @@ def edges(graph: Graph) -> Iterator[tuple[str, str, bool]]:
         type_statements = Counter(node.type_only)
         seen: set[str] = set()
         for target in node.imports:
-            if target in seen:
+            if target in seen or target == node.id:
                 continue
             seen.add(target)
             yield node.id, target, type_statements[target] == statements[target]
@@ -395,5 +460,5 @@ def _rank(values: np.ndarray) -> np.ndarray:
     return ranks
 
 
-def _ratio(numerator: float, denominator: int) -> float | None:
+def _ratio(numerator: float, denominator: float) -> float | None:
     return numerator / denominator if denominator else None

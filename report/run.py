@@ -14,12 +14,21 @@ never change, and comparing "all" vs. "no-tests" is comparing two directories.
 zod is 59% test files, and date-fns's 937 single-file directories are a
 filename convention rather than real containment. Nothing before this CLI
 could remove either from a measurement.
+
+--freeze (PR 4c) is the other half of that pair and does something different:
+it keeps a file's edges and its directory's branching in the cost while
+declaring its *location* off-limits, which only bites once something asks
+"could this move?". Excluding a convention-governed subtree changes the answer
+for files you did not exclude -- a util imported only by frozen routes would
+look unimported, and the depth tiebreak would bury it -- so the two flags are
+not interchangeable. See plan.md, PR 4c.
 """
 
 from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -33,6 +42,7 @@ from model.graph import filter_nodes
 from model.graph import splice_barrels as splice_all_barrels
 from model.metrics import DEFAULT_C, all_metrics, edges
 from model.paths import bit_cost, branching, common_prefix_len, cost, dirs
+from model.placement import local_optimality
 
 GRAPHS_DIR = Path(__file__).resolve().parents[1] / "corpus" / "graphs"
 
@@ -115,14 +125,24 @@ def worst_edges(graph: Graph, tree: dict[tuple[str, ...], int], top_n: int) -> l
     return rows[:top_n]
 
 
-def build_report(graph: Graph, c: float, top_n: int) -> tuple[dict[str, Any], list[WorstEdge]]:
-    """all_metrics() plus the unresolved-ratio flag, and this graph's worst edges."""
+def build_report(
+    graph: Graph, c: float, top_n: int, freeze: Sequence[str] = ()
+) -> tuple[dict[str, Any], list[WorstEdge], list[dict[str, Any]]]:
+    """all_metrics() plus the unresolved-ratio flag, the worst edges, and the movers.
+
+    The mover list is kept out of the metrics dict and returned alongside it:
+    it is per-file detail that belongs in a CSV, while the metrics dict is the
+    per-repo summary that gets serialized as JSON.
+    """
     metrics = all_metrics(graph, c)
     ratio = unresolved_ratio(graph)
     metrics["unresolved_ratio"] = ratio
     metrics["flagged"] = ratio is not None and ratio > UNRESOLVED_RATIO_THRESHOLD
+    placement = local_optimality(graph, c, freeze)
+    movers = placement.pop("movers")
+    metrics["local_optimality"] = placement
     tree = branching(graph)
-    return metrics, worst_edges(graph, tree, top_n)
+    return metrics, worst_edges(graph, tree, top_n), movers
 
 
 # name, extractor -- every summary.csv / summary.md column, in display order.
@@ -140,6 +160,9 @@ _SUMMARY_COLUMNS: tuple[tuple[str, Any], ...] = (
     ("compression_ratio", lambda m: m["total_bit_cost"]["compression_ratio"]),
     ("split_rate", lambda m: m["directory_cohesion"]["split_rate"]),
     ("genuine_split_rate", lambda m: m["directory_cohesion"]["genuine_split_rate"]),
+    ("locally_optimal", lambda m: m["local_optimality"]["fraction_locally_optimal"]),
+    ("frozen_files", lambda m: m["local_optimality"]["frozen_files"]),
+    ("single_child_dirs", lambda m: m["container_information"]["single_child_fraction"]),
     ("depth_informative", lambda m: m["depth_histogram"]["informative"]),
     ("rho_fanin_ge_1", lambda m: m["depth_vs_fanin"]["rho_fanin_ge_1"]),
     ("unresolved_ratio", lambda m: m["unresolved_ratio"]),
@@ -191,11 +214,27 @@ def write_worst_edges_csv(worst: list[WorstEdge], path: Path) -> None:
             )
 
 
+def write_movers_csv(movers: list[dict[str, Any]], path: Path) -> None:
+    """Every file the objective would rather see somewhere else, worst first."""
+    columns = ("repo", "file", "destination", "delta", "delta_edges", "containers_removed")
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        for m in movers:
+            writer.writerow(_fmt(m[col]) for col in columns)
+
+
 def main(
     output: Annotated[Path, typer.Option(help="directory for this run's artifacts")],
     exclude: Annotated[
         list[str],
         typer.Option(help="glob of node ids to drop from the graph entirely; repeatable"),
+    ] = [],
+    freeze: Annotated[
+        list[str],
+        typer.Option(
+            help="glob of node ids that stay in the cost but may not be moved; repeatable"
+        ),
     ] = [],
     splice_barrels: Annotated[
         bool,
@@ -220,26 +259,31 @@ def main(
     output.mkdir(parents=True, exist_ok=True)
     summary_rows: list[dict[str, Any]] = []
     all_worst: list[WorstEdge] = []
+    all_movers: list[dict[str, Any]] = []
     for graph in graphs:
         g = filter_nodes(graph, exclude)
         if splice_barrels:
             g = splice_all_barrels(g)
-        metrics, worst = build_report(g, c, top_n)
+        metrics, worst, movers = build_report(g, c, top_n, freeze)
         summary_rows.append(metrics)
         all_worst.extend(worst)
+        all_movers.extend(dict(m, repo=g.repo) for m in movers)
         (output / f"{g.repo}.json").write_text(
             json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
         )
         flag = " [FLAGGED]" if metrics["flagged"] else ""
+        optimal = metrics["local_optimality"]["fraction_locally_optimal"]
         print(
             f"{g.repo:16} {metrics['nodes']:5} nodes "
-            f"{metrics['total_bit_cost']['edges']:5} edges{flag}"
+            f"{metrics['total_bit_cost']['edges']:5} edges "
+            f"{_fmt(optimal):>6} locally optimal{flag}"
         )
 
     summary_rows.sort(key=lambda m: m["repo"])
     write_summary_csv(summary_rows, output / "summary.csv")
     write_summary_md(summary_rows, output / "summary.md", c)
     write_worst_edges_csv(all_worst, output / "worst-edges.csv")
+    write_movers_csv(all_movers, output / "movers.csv")
 
 
 if __name__ == "__main__":

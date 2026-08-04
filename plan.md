@@ -22,6 +22,12 @@ aesthetic preference and that is worth learning before building a placement engi
 
 Phase 0 tests this with no placement engine, no dominators, and no symbol resolution.
 
+**Status after PR 4c: it depends which cost you ask, and that is itself the result.** Under the
+integer cost all four TypeScript repos place files far better than chance. Under the bit cost — the
+actual objective — most of their files and half of their directories are not where it would put
+them. See "Phase 0 results" and "Open risks"; the two are not reconciled, and reconciling them is
+the go/no-go.
+
 ---
 
 ## The model
@@ -344,8 +350,10 @@ status quo by a landslide.
 | `corpus/sync.py` | Pinned shallow checkouts, `--lang` filter. |
 | `corpus/graphs/` | `flask`, `requests`, `rich`, `zod`, `date-fns`, `vite`, `tanstack-router` — checked in, deterministic. `meridian2` not yet extracted (PR 6). |
 | `model/graph.py` | `filter_nodes()`, `splice_barrels()`, `value_edges_only()` — pure transforms returning new `Graph`s. |
-| `model/metrics.py` | Every PR 4a metric, one function per metric returning a dict, plus `all_metrics()`. `DEFAULT_C = 8.0`, provisional until 4c. |
-| `report/run.py` | Typer CLI, one invocation per variant. `--exclude` (repeatable glob), `--splice-barrels/--no-splice-barrels`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
+| `model/metrics.py` | Every PR 4a metric, one function per metric returning a dict, plus `all_metrics()`. Adds `charge_counts()` (the objective decomposed per container) and `container_information()` (the date-fns check) in 4c. `DEFAULT_C = 8.0` — still provisional after 4c, which found C is not identified. |
+| `model/placement.py` | `move_frontier()`, `local_optimality()`, `sweep()` — single-file local optimality, C-independent by construction. `containers()`, `container_stability()`, `stability_sweep()` — per-directory dissolve/split pricing. `freeze_sets()`. Every delta is checked against a rebuilt graph in `tests/test_placement.py`. |
+| `report/run.py` | Typer CLI, one invocation per variant. `--exclude` and `--freeze` (repeatable globs), `--splice-barrels/--no-splice-barrels`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`, `movers.csv`. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
+| `report/calibrate.py` | The C sweep. Emits `calibration.csv` / `calibration.md` with the stability curve, the split-vs-dissolve breakdown, what directories earn before C, and a mechanically-derived verdict. |
 
 ### Schema, as actually built
 
@@ -489,7 +497,7 @@ compare against once 4b removes the confounds, not yet evidence of anything:
 | date-fns | 7.58 | 2.65 | 2.86 | 1296 |
 | vite | 5.60 | 2.88 | 1.94 | 132 |
 | tanstack-router | 5.56 | 2.79 | 1.99 | 10 |
-| flask / requests / rich | 4.38 / 4.25 / 6.29 | 2.45 / 2.66 / 2.92 | 1.79 / 1.60 / 2.16 | 4 / 2 / 2 |
+| flask / requests / rich | 4.38 / 4.25 / 6.29 | 2.45 / 2.66 / 2.91 | 1.79 / 1.60 / 2.16 | 4 / 2 / 2 |
 
 date-fns is both the worst ratio and 1296 containers against 1495 files — `C · |containers|` is
 10368 of its 44074-bit objective. That is the predicted shape, but it is not yet the named
@@ -556,6 +564,35 @@ not arbitrary; it does not say the layout is *good*. The demanding version is lo
 for each file, does moving it to any other existing directory reduce total cost? — and that is
 also the artifact the shipped tool emits.
 
+**Local optimality (PR 4c), and it is a much worse result than the permutation baseline.** Spliced,
+at any `C > 0` (the number is `C`-independent — see "PR 4c — as built"):
+
+| repo | locally optimal, all files | with tests excluded |
+| --- | --- | --- |
+| zod | 56% | 4% |
+| vite | 36% | 20% |
+| date-fns | 12% | 12% |
+| tanstack-router | 9% | 9% |
+| flask / requests / rich | 0% / 5% / 21% | unchanged |
+
+Against a shuffle these four repos looked decisively non-arbitrary on both axes. Against the
+objective itself, **most of their files are in a directory the bit cost would move them out of** —
+and zod, the best of them on the raw corpus, collapses to 4% once its test files stop propping the
+number up. Both halves of the caveat above turn out to be right: beating random said very little,
+and the demanding test says something quite different.
+
+Read the direction of the recommendations before reading the number as a verdict on the repos.
+88 of zod's 107 movers want to go to the **repo root**, and the reason is visible in the tree:
+`packages/` → `zod/` → `src/` is a chain of single-child directories carrying 0 bits, so the root
+has branching 1 and is nearly-free parking. The files that want it most — `core/errors.ts`,
+`core/util.ts`, `core/checks.ts` — are exactly zod's most-shared modules, so "shared things float
+up" is working as designed. But the same mechanism hoists 15 individual locale files out of
+`v4/locales/`, and that is not a design insight: evicting *any* member of a large directory shaves
+`log2(k) → log2(k−1)` off every edge that addresses its siblings, so a big directory is never
+locally optimal and every one of its members individually wants out. Some of the missing 96% is
+the model finding real structure and some of it is that pressure; file-level local optimality
+cannot separate them, and this is the sharpest argument yet for the symbol level.
+
 ---
 
 ## PR queue
@@ -564,11 +601,11 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **4c** — `--freeze` + local optimality + calibration of `C` | The headline experiment; replaces "better than random" with an absolute answer | Opus 5 | not started, needs 4b |
-| 2 | **6** — meridian2 | The optimization subject; only interpretable once 4c fixes `C` | Opus 5, plan mode | not started, needs 4c |
-| 3 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
+| 1 | **6** — meridian2 | The optimization subject. No longer blocked on `C` being pinned — 4c found it is not identifiable, so meridian2 gets read at the same C-independent numbers as the reference corpus | Opus 5, plan mode | not started |
+| 2 | **4d** — figures + permutation port | Presentation, not evidence | Sonnet 5 | not started, needs 4b |
 | — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
 | — | **4b** — `report/run.py` with `--exclude` | — | Sonnet 5 | **done** |
+| — | **4c** — `--freeze` + local optimality + calibration of `C` | — | Opus 5 | **done** |
 | — | **5a** — TS extractor → zod, date-fns, vite, tanstack-router | — | Sonnet 5 | **done** |
 
 Deferred and explicitly scoped: **symbol-level extraction** (see "Symbol level" below). It is the
@@ -704,6 +741,82 @@ vite, and tanstack-router. Then:
 
 Also run the date-fns prediction from "Where the model will be wrong" as a named check: the 937
 single-file directories should show up as pure `C` overhead, and zod/vite should not.
+
+### PR 4c — as built
+
+`--freeze`, local optimality and the date-fns check shipped as specified. The calibration did not,
+and could not: **the sweep above is unidentifiable, and the third outcome above is the wrong
+reading of the flat curve it produces.** That is the finding of this PR.
+
+**The sweep cannot calibrate `C`, for a structural reason.** Destinations are existing
+directories, so a single-file move can only ever *empty* containers, never create one. Its delta is
+`delta_edges − C · containers_removed` with `containers_removed ≥ 0`, so every candidate's delta is
+non-increasing in `C`, and so is the minimum over candidates. Once a file wants to move it wants to
+move at every larger `C`: the locally-optimal fraction is monotone non-increasing with its maximum
+pinned at `C = 0`, and no interior peak can exist. Measured, the curve is not merely monotone but
+saturated — across `C` from 0.125 to 128, a factor of 1000, **it does not move at all** for any of
+the four repos (vite alone shifts, from 0.425 to 0.363, and only between `C = 0` and `C > 0`).
+Reading that as "the structure term is inert" would have been a false negative about the model.
+
+**What `C` actually arbitrates is a question about containers, and that one is two-sided.** Too
+large and a directory would rather dissolve into its parent; too small and it would rather split.
+`model/placement.py::containers` prices both exactly, in the objective's own units:
+
+- `dissolve_bits` — the edge bits a directory's existence saves. It survives while `C ≤` that.
+- `split_bits` — the edge-bit change from splitting it into one subdirectory per connected
+  component of its child subgraph. This is the zero-cut partition, canonical and parameter-free,
+  and the same cut `directory_cohesion` already reports; splitting adds `m` containers, so it pays
+  while `C < −split_bits / m`. It is **one** split candidate, not a search over partitions — a
+  better-balanced cut could pay more, so "stable" here means stable against this split, not
+  against every conceivable one. Searching partitions is a placement-engine job.
+
+Both are checked against a rebuilt graph for every container in flask, rich, zod and
+tanstack-router (227 dissolves and splits), as is every move delta — the incremental arithmetic is
+the module's whole reason to exist, so it is pinned differentially rather than by hand-derived
+constants.
+
+**The answer: `C` is not identified by this corpus, and the reason is that the split side never
+binds.** Every repo's stability curve peaks at the smallest `C` tested, so the sweep bounds `C`
+from above (tightest: `C ≤ 0.91`, set by vite) and not at all from below: at `C = 0.125` the number
+of directories wanting to split is 0 in zod, 1 in tanstack-router, 4 in date-fns and 12 of 132 in
+vite, and by `C ≈ 1.2` it is zero everywhere. Dissolution pressure dominates at every `C`. The
+`ONE-SIDED` verdict `report/calibrate.py` emits is a fourth outcome the spec did not anticipate,
+and it is distinguished from `SHARED` mechanically — a plateau whose left edge is the smallest `C`
+tested is the sweep running out of room, not a measurement.
+
+**The stronger, `C`-free result underneath it: half to three quarters of the directories in these
+repos do not earn a single bit.** `dissolve_bits ≤ 0` means flattening the directory into its
+parent is already cheaper in edge bits alone, before `C` is considered at all. Spliced, unfiltered:
+
+| repo | containers | earning > 0 bits | share | p25 / median / p75 bits earned |
+| --- | --- | --- | --- | --- |
+| zod | 19 | 10 | 53% | 92 / 362 / 1973 |
+| vite | 132 | 62 | 47% | 1.3 / 3.5 / 10.6 |
+| tanstack-router | 10 | 4 | 40% | 15 / 33 / 75 |
+| date-fns | 1295 | 345 | 27% | 13 / 14 / 42 |
+
+The medians span two orders of magnitude, which is the real evidence against `C` being a constant:
+even restricted to the directories that do earn their keep, what they are worth is a repo-scale
+quantity, not a universal one.
+
+**Deviation: the calibration measure changed, and the file-level sweep is reported but not used.**
+The spec's measure (local optimality vs `C`) is still computed and still emitted — it is the
+artifact the shipped tool wants — but it appears in `calibration.md` under "for the record" with
+the monotonicity argument, because it identifies nothing. Container stability is what the sweep
+actually varies. This is a correction to the experiment, not a widening of it: the same objective,
+the same corpus, the same question, asked of the object `C` is actually about.
+
+**Bug found and fixed: self-edges.** `rich/box.py` and `rich/live.py` import themselves. Under the
+bit cost that charged `log2(branching)` to address a file from inside itself — a selection nobody
+makes — and worse, it made the objective inconsistent with the move deltas, which have to reprice
+exactly the edges the objective counts. `metrics.edges()` now drops them. Only rich is affected (2
+of 421 edges); the only published number that moves is its entropy floor, 2.92 → 2.91.
+
+**The date-fns check passes.** Under the bit cost, 856 of date-fns's 1295 containers have exactly
+one child, carry exactly 0 bits of addressing between them, and consume 16.7% of its entire
+objective as pure `C` overhead. zod and vite do not look like that: 26% and 40% single-child, 0.3%
+and 6.4% of the objective. (856 is not the 937 quoted below — that counted directories holding one
+*file*, this counts one *child* of either kind, which is the quantity `log2` sees.)
 
 ### PR 4d — figures and permutation port
 
@@ -849,8 +962,15 @@ blind spot.
 
 ## Open questions
 
-- **Is `C` a constant of well-structured code, or a per-repo knob?** PR 4c answers this directly.
-  The whole "directories must earn their existence" framing rests on the answer.
+- ~~**Is `C` a constant of well-structured code, or a per-repo knob?**~~ **Answered by PR 4c:
+  neither, on this corpus — it is not identified at all.** Nothing bounds `C` from below, because
+  essentially no directory in any of the four repos wants to split (0, 1, 4 and 12 of them at
+  `C = 0.125`, zero everywhere by `C ≈ 1.2`), so the only constraint is an upper bound of about
+  0.9 set by vite. And among the directories that do earn their keep, what they earn has a median
+  of 3.5 bits in vite against 362 in zod — two orders of magnitude, which is the substantive
+  answer: knob, if it is anything. The follow-on question is sharper and now open: **is the
+  structure term worth keeping at all?** Half to three quarters of these directories are already
+  net-negative in the edge term alone, so `C` is not what is deciding their fate.
 - **Public-face detection per language.** Needed for the fractality bit and for barrel handling. Go
   is trivial (exported identifiers); TS needs re-export analysis; Python `__init__.py` is
   convention-dependent.
@@ -878,9 +998,17 @@ blind spot.
   fixed the *real*-side numbers for zod and vite (see "Confound correction" under Phase 0 results);
   the shuffled-baseline comparison against the corrected corpus still needs PR 4d's permutation
   port before "far better than random" can be re-claimed for it.
-- **The bit cost is unvalidated.** Every empirical result so far is on the integer cost. The bit
-  cost is better-motivated but has produced no numbers; if 4c finds `C` doesn't calibrate, the
-  model reverts to needing external size bounds and this document's central argument weakens.
+- **The bit cost now has numbers, and they do not support the hypothesis.** This risk fired. `C`
+  does not calibrate (see "PR 4c — as built"), and the bit cost's verdict on four repos with an
+  independent reputation for good structure is that 64–96% of their files and half to three
+  quarters of their directories are misplaced — where the integer cost said all four beat a shuffle
+  decisively. Three readings are live and Phase 0 cannot choose between them: (a) the bit cost is
+  right and well-regarded TS repos really are over-nested, which is a strong claim needing the Go
+  control to be credible; (b) the objective has a genuine pathology — evicting any member of a
+  large directory always saves a little for its siblings, so no large directory is ever locally
+  optimal; (c) file granularity is too coarse, and the symbol level would show the locality the
+  file graph cannot. The `FINDINGS.md` go/no-go has to weigh these, and it should not be written as
+  if the bit cost had been validated.
 - **File-level cohesion can't distinguish "junk drawer" from "parallel siblings sharing an
   interface."** Needs symbol-level data or naming-as-validator; not solvable with what Phase 0 has.
 - **tsconfig path-alias resolution (`@/*`) is unsolved** and blocks PR 6.
