@@ -778,26 +778,47 @@ large and a directory would rather dissolve into its parent; too small and it wo
 `model/placement.py::containers` prices both exactly, in the objective's own units:
 
 - `dissolve_bits` — the edge bits a directory's existence saves. It survives while `C ≤` that.
-- `split_bits` — the edge-bit change from splitting it into one subdirectory per connected
-  component of its child subgraph. This is the zero-cut partition, canonical and parameter-free,
-  and the same cut `directory_cohesion` already reports; splitting adds `m` containers, so it pays
-  while `C < −split_bits / m`. It is **one** split candidate, not a search over partitions — a
-  better-balanced cut could pay more, so "stable" here means stable against this split, not
-  against every conceivable one. Searching partitions is a placement-engine job.
+- `split_bits` — the edge-bit change from moving the best subset of its children down into a new
+  subdirectory. Candidates are each connected component and each side of the Fiedler-vector cut
+  taken at zero and at its median; each is priced exactly and the cheapest wins. One new container
+  appears, so it pays while `C < −split_bits`.
 
-Both are checked against a rebuilt graph for every container in flask, rich, zod and
-tanstack-router (227 dissolves and splits), as is every move delta — the incremental arithmetic is
-the module's whole reason to exist, so it is pinned differentially rather than by hand-derived
-constants.
+  **It is an extraction, not a partition, and the difference is load-bearing.** The remainder stays
+  in the directory rather than moving into a group of its own, so exactly one container is created
+  and the structure term costs `C` once rather than `C·m`. Pricing a split as an `m`-way partition —
+  which the first version of this did — overcharges every split by up to `C·(m−1)`. It is also the
+  operation people mean by "these files belong in a subdirectory": the answer names a subset, not a
+  repartitioning of everything.
 
-**The answer: `C` is not identified by this corpus, and the reason is that the split side never
-binds.** Every repo's stability curve peaks at the smallest `C` tested, so the sweep bounds `C`
-from above (tightest: `C ≤ 0.91`, set by vite) and not at all from below: at `C = 0.125` the number
-of directories wanting to split is 0 in zod, 1 in tanstack-router, 4 in date-fns and 12 of 132 in
-vite, and by `C ≈ 1.2` it is zero everywhere. Dissolution pressure dominates at every `C`. The
-`ONE-SIDED` verdict `report/calibrate.py` emits is a fourth outcome the spec did not anticipate,
-and it is distinguished from `SHARED` mechanically — a plateau whose left edge is the smallest `C`
-tested is the sweep running out of room, not a measurement.
+  Two constraints keep the proposal and its description the same operation. The subset must hold
+  **at least two** children, since a one-child subdirectory has branching 1 and carries zero
+  addressing information by construction — exactly what `container_information()` reports as pure
+  `C` overhead in date-fns. And it must be the **smaller** side, because extracting a majority
+  prices fine but means "promote the others", which is a move. Without the first, the sign cut peels
+  a single file off nearly every large directory (397 + 1 for date-fns's `fp`); without the second,
+  `fp` proposes boxing 382 of its 398 children.
+
+Both are checked against a rebuilt graph for every container in flask, rich, zod, vite and
+tanstack-router, including deliberately arbitrary subsets nothing would propose, as is every move
+delta — the incremental arithmetic is the module's whole reason to exist, so it is pinned
+differentially rather than by hand-derived constants.
+
+**The answer: `C` is bounded from both sides, and the bounds disagree across repos by 160×.**
+zod does not reach its peak stability until `C ≥ 8.4`; vite has left its by `C ≈ 0.2`. There is no
+value inside every repo's plateau, so `report/calibrate.py` returns `SPREAD` — plan.md's second
+anticipated outcome. **`C` is a per-repo knob, not a constant of well-structured code.** Mean
+stability across the four peaks at the bottom of the grid, so if one number must be picked it is a
+small one, and the spread is the sensitivity.
+
+> **Superseded finding, kept because the reasoning matters.** The first version of this experiment
+> concluded `ONE-SIDED` — that the split side never binds and `C` is bounded only from above. That
+> was an artifact of testing only the zero-cut partition into connected components. A component
+> partition offers nothing when a directory is internally connected, which is the majority case, so
+> the biggest and most obvious split candidates were never priced at all: vite's `node` (30
+> children, 585 internal edges, **one** component) is the clearest missing-subdirectory case in the
+> corpus and no candidate was ever generated for it. The lesson is that a null result from a
+> restricted search space is a fact about the search space. `ONE-SIDED` remains a verdict the code
+> can return, since it is a real outcome — it just is not this corpus's.
 
 **The `C`-free result underneath it, and the reason `C` cannot be identified: most directory
 boundaries are addressing-*neutral*.** Every directory falls into one of three classes, and the
@@ -819,16 +840,16 @@ and much more alarming than the data:
   all of tanstack-router's and 55 of vite's 64.
 - **costs** — dissolving would make addressing strictly cheaper. No `C` saves it. **2–13%.**
 
-That middle column is why `C` is unidentifiable, and it is a much cleaner explanation than the
-sweep's: **the population `C` governs sits exactly at zero, so only `C`'s sign ever matters and its
-magnitude never enters.** For a neutral container, keep-versus-dissolve is a comparison of `C`
-against 0, and any `C > 0` says dissolve. There is nothing for a sweep to find.
+That middle column is most of why `C` is so hard to pin: **the population it governs sits exactly
+at zero, so for those directories only `C`'s sign matters and its magnitude never enters.** For a
+neutral container, keep-versus-dissolve is a comparison of `C` against 0, and any `C > 0` says
+dissolve. The sweep is left identifying `C` from the minority that are not neutral, which is why
+the per-repo bounds are so far apart.
 
-The medians among the earning directories still span two orders of magnitude (3.5 bits in vite
-against 362 in zod), which is the evidence against `C` being a constant. But the headline is the
-neutral majority: **the dependency graph has no opinion on most directory boundaries, in either
-direction.** That is an information ceiling, not a calibration problem, and no amount of tuning
-moves it.
+The medians among the earning directories span two orders of magnitude (3.5 bits in vite against
+362 in zod), which is the same story from the other side. But the headline is the neutral majority:
+**the dependency graph has no opinion on most directory boundaries, in either direction.** That is
+an information ceiling, not a calibration problem, and no amount of tuning moves it.
 
 **Re-rooting, a measurement artifact found while checking the above.** Node ids are
 checkout-relative, so zod's 286 files all carry `packages/zod/src/`. Those levels each have one
@@ -871,6 +892,26 @@ right shape for a linter. Read them:
 | date-fns `locale/_lib` | 4 | 4 | 0 | 346 | −650 | no — same |
 | vite `node/__tests__/fixtures` | 18 | 18 | 0 | 3 | −10 | no — should have been `--exclude`d |
 | tanstack `router-core/src/ssr/serializer` | 4 | 1 | 3 | 9 | −2.4 | marginal |
+
+**The third finding type: which files belong in a subdirectory.** `report/run.py` also emits
+`splits.csv` — the directories that would pay to gain one, and *which children move into it*. This
+is the most legible output the tool produces, because it names files rather than scoring a
+directory. Eleven proposals across the corpus; the two best:
+
+| directory | proposal | Δ bits |
+| --- | --- | --- |
+| vite `node` | move 15 of 30 down — `baseEnvironment.ts`, `build.ts`, `config.ts`, `constants.ts`, `environment.ts`, `optimizer/`, … | −373 |
+| tanstack `react-router/src` | move 23 of 46 down — `Asset.tsx`, `ClientOnly.tsx`, `HeadContent.tsx`, `Match.tsx`, `RouterProvider.tsx`, … | −43 |
+
+Both are cases **no earlier version of this machinery could produce**: each directory is a single
+connected component, so the component-partition search proposed nothing for either and reported
+them as unsplittable.
+
+Whether the cuts are *good* is a separate question this project cannot yet answer. The tanstack
+proposal is component-heavy — 20 of the 23 moved files are `.tsx` — but 15 more `.tsx` files stay
+behind, so it is a dependency cluster that skews toward components rather than a
+components/non-components separation. That is the same gap as the junk-drawer/taxonomy one: the
+graph produces a defensible cut and cannot say whether it is a cut anyone would name.
 
 **Nothing in the *cost* numbers separates the first row from the second.** Both are "many
 components, high external traffic, no internal cohesion". But there is a second graph signal that

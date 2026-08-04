@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass
 from typing import Any
+
+import numpy as np
 
 from extractors.schema import Graph
 from model.graph import matches_any
@@ -218,11 +220,15 @@ def sweep(
 # parent, too small and it would rather split. Both are priced below in the
 # objective's own units.
 #
-# Measured, the split side turns out not to bind on the reference corpus -- at
-# the smallest C tested, 0 to 12 directories per repo want to split -- so C ends
-# up bounded from above and not from below. That is PR 4c's answer and it is
-# recorded in plan.md; it is a fact about these repos, not about this code,
-# which prices both directions the same way.
+# Measured, both sides bind, but the bounds they set disagree across repos by
+# 160x -- zod does not reach peak stability until C >= 8.4, vite has left its by
+# C ~ 0.2. So C is a per-repo knob. That is PR 4c's answer; see plan.md.
+#
+# An earlier version concluded the split side never binds, which was an artifact
+# of only ever offering the zero-cut partition into connected components: that
+# proposes nothing for an internally connected directory, which is the majority
+# case and includes every large split candidate in the corpus. best_split now
+# searches spectral cuts too.
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,15 +239,11 @@ class Container:
     it into its parent changes the edge term by -dissolve_bits and the structure
     term by -C, so it survives exactly while C <= dissolve_bits.
 
-    `split_bits` is the change in edge bits from splitting it into one
-    subdirectory per connected component of its child subgraph -- the zero-cut
-    partition, which is canonical and parameter-free and is the same cut
-    metrics.directory_cohesion already reports. Splitting adds `components`
-    containers, so it pays while C < -split_bits / components. This is one
-    concrete split candidate, not a search over partitions: a better-balanced
-    cut could pay more, so a stable container here is stable against *this*
-    split rather than against every conceivable one. Searching partitions is a
-    placement-engine job, not a Phase 0 one.
+    `split_bits` is the change in edge bits from the best subdirectory this
+    container could gain (see best_split), and `split_members` names the
+    children that would move into it -- so a report can say *which files*
+    belong in a subdirectory, not merely that some do. One new container is
+    created, so the split pays while C < -split_bits.
     """
 
     dir: str
@@ -251,6 +253,9 @@ class Container:
     external_entries: int
     dissolve_bits: float
     split_bits: float
+    split_size: int
+    split_kind: str
+    split_members: tuple[str, ...]
 
     @property
     def verdict(self) -> str:
@@ -284,10 +289,13 @@ class Container:
 
     @property
     def c_min(self) -> float:
-        """Smallest C at which this directory resists splitting into components."""
-        if self.components < 2:
-            return 0.0
-        return max(0.0, -self.split_bits / self.components)
+        """Smallest C at which this directory resists gaining a subdirectory.
+
+        Extracting a subset creates exactly one container, so the split pays
+        while `C < -split_bits` -- no division by a group count, because there
+        is only ever one new directory.
+        """
+        return max(0.0, -self.split_bits)
 
     def stable(self, c: float) -> bool:
         return self.c_min - _EPSILON <= c <= self.c_max + _EPSILON
@@ -327,7 +335,7 @@ def containers(graph: Graph, freeze: Sequence[str] = ()) -> list[Container]:
                 dir="/".join(d),
                 children=k,
                 dissolve_bits=dissolve,
-                **_split_terms(children[d], internal[d], external[d], k),
+                **best_split(children[d], internal[d], external[d], k),
             )
         )
     return out
@@ -415,39 +423,173 @@ def _container_edges(
     return children, internal, external
 
 
-def _split_terms(
-    members: set[Child], links: list[tuple[Child, Child]], entries: Counter[Child], k: int
-) -> dict[str, Any]:
-    """Edge-bit change from splitting a container into its connected components.
+def extract_bits(
+    subset: AbstractSet[Child],
+    links: list[tuple[Child, Child]],
+    entries: Counter[Child],
+    k: int,
+) -> float:
+    """Exact edge-bit change from moving `subset` into a new subdirectory of a
+    container that currently holds k children.
 
-    An edge into a group of size k_i pays log2(m) to pick the group and
-    log2(k_i) inside it, where it used to pay log2(k) once -- so it moves by
-    log2(m * k_i / k) if it comes from outside, and by log2(k_i / k) if the
-    container was its LCA (its LCA becomes the group, so it never pays the
-    log2(m)). Every internal edge stays inside one component by construction,
-    which is what makes this the zero-cut partition.
+    This is the "these files belong in a subdirectory" operation, and it is not
+    the same as partitioning the directory into m groups. The remainder keeps
+    living in the container itself rather than moving into a group of its own,
+    so the container ends up with `k - s + 1` children and **exactly one new
+    container is created** -- the structure term costs C once, not C*m. A
+    partition into m groups is this operation applied m-1 times, and pricing it
+    as a partition overcharges every split by up to C*(m-1).
+
+    After the move a selection of size k becomes: `s` inside the new directory
+    (when the container was the edge's LCA and both endpoints went into the
+    subset -- the LCA moves down with them), `k - s + 1` when the target stayed
+    behind, and both when the target moved but the edge's LCA did not.
     """
-    component = _components(members, links)
-    sizes = Counter(component.values())
-    m = len(sizes)
-    if m < 2:
-        return {
-            "components": m,
-            "internal_edges": len(links),
-            "external_entries": sum(entries.values()),
-            "split_bits": 0.0,
-        }
+    s = len(subset)
+    if not 1 <= s <= k - 1:
+        return 0.0
+    remainder = k - s + 1
     bits = 0.0
     for child, count in entries.items():
-        bits += count * math.log2(m * sizes[component[child]] / k)
-    for cu, _ in links:
-        bits += math.log2(sizes[component[cu]] / k)
+        bits += count * math.log2(remainder * (s if child in subset else 1) / k)
+    for cu, cv in links:
+        if cv not in subset:
+            bits += math.log2(remainder / k)
+        elif cu in subset:
+            bits += math.log2(s / k)
+        else:
+            bits += math.log2(remainder * s / k)
+    return bits
+
+
+def best_split(
+    members: set[Child], links: list[tuple[Child, Child]], entries: Counter[Child], k: int
+) -> dict[str, Any]:
+    """The cheapest subdirectory this container could gain, among candidates searched.
+
+    The objective is its own scoring function, so the only question is which
+    subsets to put in front of it. Four, all deterministic and parameter-free:
+    each connected component of the child subgraph, and each side of the
+    Fiedler vector cut at zero and at its median.
+
+    The Fiedler candidates are the ones that matter. Components only offer a
+    subset when the directory is *already* internally disconnected, which in
+    practice means it is a taxonomy rather than a split candidate, and they
+    offer nothing at all for the case anyone would call a missing subdirectory:
+    a large connected directory with a dense sub-cluster. vite's `node` -- 30
+    children, 585 internal edges, one component -- is the clearest example in
+    the corpus, and a components-only search proposes nothing for it and then
+    reports it as unsplittable.
+
+    Both ends of each cut are tried because they are not equivalent under this
+    operation: extracting the dense half and extracting the sparse half create
+    different trees at different prices.
+
+    Subsets smaller than 2 are skipped. A subdirectory holding one file has
+    branching 1, carries zero addressing information by construction, and is the
+    exact thing container_information() reports as pure C overhead in date-fns;
+    a "split" proposing one is really proposing to evict a single hot file into
+    a box to shorten its address, which is a move recommendation in a split's
+    clothing. Without the guard the sign cut peels one file off nearly every
+    large directory -- 397 + 1 for date-fns's `fp`, 29 + 1 for vite's `node`.
+    """
+    components = _component_partition(members, links)
+    fiedler = _fiedler(members, links)
+    median = _median(fiedler)
+    candidates: list[tuple[str, set[Child]]] = [
+        (f"component-{g}", {c for c in members if components[c] == g})
+        for g in sorted(set(components.values()))
+    ]
+    for name, at in (("bisection", 0.0), ("median-bisection", median)):
+        low = {c for c in members if fiedler[c] <= at}
+        candidates += [(name, low), (name, members - low)]
+
+    best: set[Child] = set()
+    bits = 0.0
+    kind = "none"
+    for name, subset in candidates:
+        # The new subdirectory has to be the smaller side. Extracting a majority
+        # is priced perfectly well and is sometimes even the cheaper tree, but it
+        # does not mean what the recommendation says: moving 382 of date-fns's
+        # 398 `fp` children into a box is really "promote the other 16", which
+        # is a move, not a subdirectory. Requiring the minority keeps the
+        # proposal and its description the same operation -- and loses nothing,
+        # because both sides of every cut are candidates, so the interesting
+        # half is still reachable.
+        if not 2 <= len(subset) <= k // 2:
+            continue
+        candidate = extract_bits(subset, links, entries, k)
+        if candidate < bits:
+            best, bits, kind = subset, candidate, name
     return {
-        "components": m,
+        "components": len(set(components.values())),
         "internal_edges": len(links),
         "external_entries": sum(entries.values()),
         "split_bits": bits,
+        "split_size": len(best),
+        "split_kind": kind,
+        "split_members": tuple(sorted(_label(c) for c in best)),
     }
+
+
+def _label(child: Child) -> str:
+    """A child as a path: its own id for a file, the directory path for a subtree.
+
+    The trailing slash is not decoration -- it is what keeps a file `a/b` and a
+    subdirectory `a/b/` distinct as dictionary keys.
+    """
+    _, value = child
+    return value if isinstance(value, str) else "/".join(value) + "/"
+
+
+def _component_partition(
+    members: set[Child], links: list[tuple[Child, Child]]
+) -> dict[Child, int]:
+    roots = _components(members, links)
+    index = {r: i for i, r in enumerate(sorted(set(roots.values()), key=str))}
+    return {c: index[r] for c, r in roots.items()}
+
+
+def _fiedler(members: set[Child], links: list[tuple[Child, Child]]) -> dict[Child, float]:
+    """The child graph's Fiedler vector -- the standard min-ratio-cut relaxation.
+
+    The eigenvector of the second-smallest Laplacian eigenvalue orders the
+    children so that cutting the sequence anywhere separates two loosely coupled
+    halves; where to cut is left to the caller, since the sign and the median
+    give different and both-worth-trying answers. Directions are dropped: for
+    "what should live together", an import is an association whichever way it
+    points.
+
+    All-zero when there is nothing to cut (fewer than two children, or no
+    internal edges), which yields a single group and so no candidate.
+    """
+    order = sorted(members, key=str)
+    n = len(order)
+    if n < 2 or not links:
+        return dict.fromkeys(order, 0.0)
+    index = {c: i for i, c in enumerate(order)}
+    adjacency = np.zeros((n, n))
+    for cu, cv in links:
+        i, j = index[cu], index[cv]
+        adjacency[i, j] += 1
+        adjacency[j, i] += 1
+    laplacian = np.diag(adjacency.sum(1)) - adjacency
+    vector = np.linalg.eigh(laplacian)[1][:, 1]
+    return {c: float(vector[index[c]]) for c in order}
+
+
+def _cut(members: set[Child], fiedler: Mapping[Child, float], at: float) -> dict[Child, int]:
+    """Two groups, split at `at` along the Fiedler ordering."""
+    return {c: int(fiedler[c] > at) for c in sorted(members, key=str)}
+
+
+def _median(fiedler: Mapping[Child, float]) -> float:
+    """Median of the Fiedler vector -- the balanced cut, as against the sign cut."""
+    values = sorted(fiedler.values())
+    if not values:
+        return 0.0
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
 
 
 def _components(members: set[Child], links: list[tuple[Child, Child]]) -> dict[Child, Child]:

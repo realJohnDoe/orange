@@ -27,13 +27,14 @@ from model.metrics import charge_counts, container_information, edges, total_bit
 from model.paths import bit_cost, branching, child_of, dirs
 from model.placement import (
     Move,
-    _components,
     _container_edges,
+    _label,
     container_stability,
     containers,
     freeze_sets,
     local_optimality,
     move_frontier,
+    extract_bits,
     stability_sweep,
     sweep,
 )
@@ -102,17 +103,19 @@ def apply_dissolve(graph_: Graph, d: tuple[str, ...]) -> Graph:
     return _rename(graph_, mapping)
 
 
-def apply_split(graph_: Graph, d: tuple[str, ...], members, links) -> Graph:
-    """Give each connected component of d's child subgraph its own subdirectory."""
-    component = _components(members, links)
-    names = {root: f"__g{i}" for i, root in enumerate(sorted(set(component.values()), key=str))}
+def apply_extract(graph_: Graph, d: tuple[str, ...], subset) -> Graph:
+    """Move the children in `subset` into a new subdirectory of d; rest stays put.
+
+    `subset` holds child *labels*, matching Container.split_members -- a file
+    child is labelled by its id, a subdirectory child by its path with a
+    trailing slash.
+    """
     mapping = {}
     for n in graph_.nodes:
         p = dirs(n.id)
-        if p[: len(d)] != d:
+        if p[: len(d)] != d or _label(child_of(d, n.id)) not in subset:
             continue
-        group = names[component[child_of(d, n.id)]]
-        mapping[n.id] = "/".join((*d, group, *p[len(d) :], n.id.rsplit("/", 1)[-1]))
+        mapping[n.id] = "/".join((*d, "__extracted", *p[len(d) :], n.id.rsplit("/", 1)[-1]))
     return _rename(graph_, mapping)
 
 
@@ -281,20 +284,45 @@ def test_dissolve_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
         assert c.dissolve_bits == pytest.approx(edge_bits(apply_dissolve(g, d)) - base, abs=1e-6)
 
 
-@pytest.mark.parametrize("repo", ["rich", "zod", "tanstack-router"])
+@pytest.mark.parametrize("repo", ["rich", "zod", "vite", "tanstack-router"])
 def test_split_bits_match_a_rebuilt_graph(corpus_graph, repo: str) -> None:
+    """The subdirectory the container actually proposes must price exactly."""
     g = corpus_graph(repo)
     base = edge_bits(g)
-    members, internal, _ = _container_edges(g)
     checked = 0
     for c in containers(g):
-        if c.components < 2:
+        if c.split_size < 2:
             continue
         d = tuple(c.dir.split("/"))
-        rebuilt = edge_bits(apply_split(g, d, members[d], internal[d])) - base
+        rebuilt = edge_bits(apply_extract(g, d, set(c.split_members))) - base
         assert c.split_bits == pytest.approx(rebuilt, abs=1e-6)
         checked += 1
-    assert checked, f"{repo} has no splittable container, so this proves nothing"
+    assert checked, f"{repo} proposed no split, so this proves nothing"
+
+
+@pytest.mark.parametrize("repo", ["rich", "zod", "tanstack-router"])
+def test_arbitrary_subsets_price_exactly(corpus_graph, repo: str) -> None:
+    """extract_bits is exact for subsets nothing would ever propose.
+
+    best_split only hands over subsets that pay, so pricing those is not on its
+    own evidence that the formula is right in general. These are deliberately
+    arbitrary -- every other child in sort order -- which exercises the
+    cross-boundary terms a connected component never reaches.
+    """
+    g = corpus_graph(repo)
+    base = edge_bits(g)
+    members, internal, external = _container_edges(g)
+    checked = 0
+    for c in containers(g):
+        if c.children < 4:
+            continue
+        d = tuple(c.dir.split("/"))
+        subset = {ch for i, ch in enumerate(sorted(members[d], key=str)) if i % 2}
+        predicted = extract_bits(subset, internal[d], external[d], c.children)
+        rebuilt = edge_bits(apply_extract(g, d, {_label(ch) for ch in subset})) - base
+        assert predicted == pytest.approx(rebuilt, abs=1e-6)
+        checked += 1
+    assert checked, f"{repo} has no container with 4+ children"
 
 
 def test_verdict_separates_earning_neutral_and_costing_directories(corpus_graph) -> None:
@@ -334,12 +362,15 @@ def test_a_container_with_one_component_has_no_split_to_make() -> None:
     assert pkg.c_min == 0.0
 
 
-def test_two_clusters_wants_to_split_below_its_c_min() -> None:
+def test_two_clusters_wants_a_subdirectory_below_its_c_min() -> None:
+    #   pkg/ holds {a1,a2}, {b1,b2} and a lonely leaf. The proposal is to move
+    #   one connected pair down, not to partition all five -- the leaf stays.
     pkg = next(c for c in containers(two_clusters()) if c.dir == "pkg")
     assert pkg.components == 3
+    assert pkg.split_size == 2
+    assert len(pkg.split_members) == 2
     assert pkg.c_min > 0
     assert not pkg.stable(pkg.c_min / 2)
-    assert pkg.stable(pkg.c_min * 1.5) or pkg.c_min > pkg.c_max
 
 
 def test_a_container_is_unstable_above_what_it_earns() -> None:

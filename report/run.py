@@ -250,6 +250,8 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                 "internal_edges",
                 "external_entries",
                 "split_bits",
+                "split_size",
+                "split_kind",
                 "c_min",
                 "c_max",
             ]
@@ -266,10 +268,32 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                     x.internal_edges,
                     x.external_entries,
                     _fmt(x.split_bits),
+                    x.split_size,
+                    x.split_kind,
                     _fmt(x.c_min),
                     _fmt(x.c_max),
                 ]
             )
+
+
+def write_splits_csv(census: list[tuple[str, Container]], path: Path, c: float) -> None:
+    """The directories that want subdividing at this C, and which child goes where.
+
+    This is the "these files belong in a subdirectory" finding, and unlike the
+    dissolve verdict it names the members, so the recommendation is actionable
+    rather than merely a score. Ordered by how strongly the split pays.
+    """
+    wanted = [(repo, x) for repo, x in census if x.split_size >= 2 and x.split_bits + c < 0]
+    wanted.sort(key=lambda row: row[1].split_bits)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["repo", "dir", "delta", "split_bits", "size", "of", "kind", "child"])
+        for repo, x in wanted:
+            for child in x.split_members:
+                writer.writerow(
+                    [repo, x.dir, _fmt(x.split_bits + c), _fmt(x.split_bits),
+                     x.split_size, x.children, x.split_kind, child]
+                )
 
 
 def main(
@@ -333,7 +357,7 @@ def main(
             f"{g.repo:16} {metrics['nodes']:5} nodes "
             f"{metrics['total_bit_cost']['edges']:5} edges | dirs "
             f"{stability['earns']:4} earn {stability['neutral']:4} neutral "
-            f"{stability['costs']:3} cost{flag}"
+            f"{stability['costs']:3} cost {stability['wants_split']:3} want splitting{flag}"
         )
 
     summary_rows.sort(key=lambda m: m["repo"])
@@ -342,6 +366,7 @@ def main(
     write_worst_edges_csv(all_worst, output / "worst-edges.csv")
     write_movers_csv(all_movers, output / "movers.csv")
     write_containers_csv(all_containers, output / "containers.csv")
+    write_splits_csv(all_containers, output / "splits.csv", c)
 
 
 if __name__ == "__main__":

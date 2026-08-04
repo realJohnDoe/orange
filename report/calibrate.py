@@ -21,8 +21,8 @@ two-sided (model.placement.containers):
 
 - too large, and a directory would rather dissolve into its parent -- the
   addressing it saves does not cover the C it costs;
-- too small, and a directory would rather split into its connected components --
-  the addressing a split would save exceeds the C the new containers cost.
+- too small, and a directory would rather move some of its children down into a
+  new subdirectory -- the addressing that saves exceeds the C the container costs.
 
 Each directory is stable over an interval of C, so the fraction of stable
 directories has a genuine interior maximum, and the three outcomes plan.md lists
