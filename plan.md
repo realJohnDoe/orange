@@ -2,7 +2,8 @@
 
 Single source of truth: the model, the reasoning behind it, the alternatives already rejected,
 what has been built and measured so far, and the prioritized PR queue. Supersedes the former
-`plans/steps-4-6.md`, which is folded in below.
+`plans/steps-4-6.md`, which is folded in below. Per-repo numbers and what each repo taught us live
+in [REPOS.md](REPOS.md).
 
 **Goal:** derive file and directory structure from the dependency graph, rather than asserting a
 hand-written structure. Naming is a later, easy problem (LLMs are good at it).
@@ -396,9 +397,15 @@ report/           metrics, baselines, per-repo tables
 
 ## What we've learned
 
-**The Python corpus is degenerate.** requests has zero depth variance, rich is barely better,
-flask only has structure from `json/`/`sansio/`. This was predicted before any TS data existed and
-then confirmed; the Phase 0 results table below is the evidence that replaced it.
+**The Python corpus is degenerate — and PR 4c made it exact.** After re-rooting, the three Python
+repos have **0, 1 and 2 directories between them**: requests has no tree at all (19 files, all
+siblings, mean integer cost exactly 0.000, local optimality trivially 100%), rich has
+`_unicode_data`, flask has `json/` and `sansio/`. There is nothing here for a tree metric to
+measure. The cause is not Python but *small library* Python: a package is both the unit of
+distribution and the unit of import, so subdividing one is a breaking API change, and `__init__.py`
+re-export makes flat cheap. The corpus was selected for entrypoint count and call-graph depth; the
+axis that turned out to matter is directory-tree depth and branching, which is screenable from
+`git ls-files` before extracting anything. See [REPOS.md](REPOS.md).
 
 **The meridian2 correction.** `meridian2` is the repo the tool is meant to *optimize*, not ground
 truth to calibrate the extractor or cost model against — "the tool disagrees with meridian2" is a
@@ -865,12 +872,37 @@ right shape for a linter. Read them:
 | vite `node/__tests__/fixtures` | 18 | 18 | 0 | 3 | −10 | no — should have been `--exclude`d |
 | tanstack `router-core/src/ssr/serializer` | 4 | 1 | 3 | 9 | −2.4 | marginal |
 
-**Nothing in the numbers separates the first row from the second.** Both are "many components, high
-external traffic, no internal cohesion". The difference is that `locales` names a real taxonomy and
-`shared` does not — which is precisely plan.md's naming-as-validator, and this is the strongest
-empirical case for it the project has produced: the graph narrows four repos to ~98 candidates and
-a naming pass is what would cut that to the one or two that are real. Promoted from "later phase"
-to the blocking question for the tool (see "Open questions").
+**Nothing in the *cost* numbers separates the first row from the second.** Both are "many
+components, high external traffic, no internal cohesion". But there is a second graph signal that
+does separate them, and it was hiding in plain sight.
+
+**Structural equivalence, not cohesion.** `directory_cohesion` asks whether a directory's children
+link to *each other*. That question is blind by construction to files that never touch but do the
+same job. The other question — do they have the same *neighbours*? — is answerable from the same
+graph, and it separates the two cases cleanly. Median pairwise Jaccard of children's
+out-neighbourhoods:
+
+| directory | out-Jaccard | in-Jaccard | reading |
+| --- | --- | --- | --- |
+| zod `v4/locales` | **1.000** | 1.000 | 52 files importing an identical set — parallel siblings |
+| rich `_unicode_data` | **1.000** | 0.000 | 23 data tables, identical imports — parallel siblings |
+| vite `node/plugins` | 0.250 | 0.100 | partly parallel, as a plugin directory should be |
+| vite `shared` | **0.000** | 0.015 | disjoint neighbourhoods — junk drawer |
+| zod `v3/helpers` | **0.000** | 0.333 | junk drawer |
+| date-fns `_lib` | **0.000** | 0.000 | junk drawer |
+
+Two things make this more than a curiosity. First, it resolves the `zsf.ts` / `_unicode_data`
+ambiguity that plan.md has carried since Phase 0 as needing *symbol-level* data — `_unicode_data`
+scores 1.000 and is plainly a data table, at file granularity, today. Second, **the graph
+independently reproduces the naming heuristic**: the three directories scoring 0.000 are named
+`shared`, `helpers` and `_lib`, which are exactly the words naming-as-validator says to reject on.
+Two independent signals agreeing is much stronger evidence than either alone.
+
+Caveat that keeps this honest: it is 7 directories labelled by eye. Across the full `costs` set the
+separation is suggestive rather than proven, and `earns` directories score low too (median 0.000),
+so this is a discriminator *within* the `costs` list, not a standalone metric. Building the
+labelled evaluation set it needs is the main argument for enlarging the corpus. See "Open
+questions".
 
 ### PR 4d — figures and permutation port
 
@@ -1034,14 +1066,16 @@ blind spot.
   conventions like meridian2's `@/*` → `./src/*` involve no package name and remain unsolved.
 - **Do symbols matter?** See "Symbol level". The file-level ceiling is already visible: `zsf.ts` and
   `rich/_unicode_data` produce the *identical* file-level signature.
-- **Can naming separate a junk drawer from a taxonomy? This is now the question the tool depends
-  on.** PR 4c's `costs` list is the right *size* for a linter — 1–3 candidates on a normal repo —
-  but not clean: vite's `shared` (four unrelated clusters, no internal cohesion) and zod's
-  `v4/locales` (52 files, no internal cohesion) are indistinguishable in every number the graph
-  produces, and only the first is a finding. An LLM naming pass over the `containers.csv` `costs`
-  rows is a cheap, decisive experiment against a candidate set that already exists, and it should
-  come before any placement engine. If naming cannot separate them, the tool has no usable output
-  and the answer is no.
+- **Can a junk drawer be told from a taxonomy? This is the question the tool depends on, and there
+  are now two candidate answers rather than none.** PR 4c's `costs` list is the right *size* for a
+  linter — 1–3 candidates on a normal repo — but mixes real findings (vite's `shared`) with
+  legitimate taxonomies (zod's `v4/locales`). Two signals separate them on the handful of cases we
+  can label by eye, and they agree with each other: **structural equivalence** (children's
+  neighbourhood Jaccard: 1.000 for locale tables, 0.000 for junk drawers) and **naming** (the
+  low-scoring directories are literally named `shared`, `helpers`, `_lib`). Test structural
+  equivalence first — it is free, deterministic, and already computable from the extracted graphs —
+  and keep naming as the confirmation. Needs a labelled evaluation set bigger than 7 directories,
+  which is the main reason to enlarge the corpus.
 - **Adoption posture.** The tool most likely to be used is an advisory metric plus a handful of
   high-confidence moves (the `knip` / `dependency-cruiser` shape), not a formatter. The strongest
   niches are agent-written code (no aesthetic ownership, sprawls badly), greenfield, and monorepo
@@ -1078,8 +1112,12 @@ blind spot.
   and wrong as advice. Nothing in the numbers distinguishes it from vite's `shared`, which is a
   real junk drawer. Naming-as-validator is therefore not a later refinement but the component that
   decides whether the tool's output is usable, and it is entirely unbuilt and untested.
-- **File-level cohesion can't distinguish "junk drawer" from "parallel siblings sharing an
-  interface."** Needs symbol-level data or naming-as-validator; not solvable with what Phase 0 has.
+- ~~**File-level cohesion can't distinguish "junk drawer" from "parallel siblings sharing an
+  interface."**~~ **Probably solvable at file level after all** — see structural equivalence under
+  "PR 4c — as built". Cohesion asks whether children link to each other; the discriminator asks
+  whether they have the same neighbours, and `_unicode_data` scores 1.000 against `shared`'s 0.000.
+  Validated on 7 hand-labelled directories, so still a risk, but no longer one that requires the
+  symbol level to address.
 - **tsconfig path-alias resolution (`@/*`) is unsolved** and blocks PR 6.
 - **`is_barrel_ts` is lexical**, not type-aware: it can miss a barrel with a side effect and
   over-flag a file whose statements happen to all be re-exports. Counted, not assumed away. Its
