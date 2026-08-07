@@ -414,6 +414,114 @@ so this is a discriminator *within* the `costs` list, not a standalone metric. B
 labelled evaluation set it needs is the main argument for enlarging the corpus. See "Open
 questions".
 
+> **The caveat was the finding.** PR 7 built the labelled set — all 98 `costs` rows and all 19
+> split candidates — and the discriminator does not survive it: **3% precision at 100% recall**,
+> because 87 date-fns `locale/*/_lib` directories score 0.25–0.42 out-Jaccard and are the most
+> convention-governed directories in the corpus. The seven cases above are all still correct.
+> They were also all at the extremes, which is why a rule fitted to them broke on the middle. See
+> "Can a model adjudicate?" below for what the numbers become with the in-neighbourhood added and
+> with the conventions declared.
+
+---
+
+## Can a model adjudicate?
+
+PR 7's question, and the one every open risk routed through: **can a model tell a finding from a
+false positive?** Answer: **yes, and a cheap one is enough — but the config matters more than the
+model, and the deterministic signal it was supposed to replace is not usable alone.**
+
+**The evaluation set.** `report/adjudicate.py build` turns the corpus into 117 questions — one per
+`costs` verdict (98) and one per directory with at least one paying split candidate (19, grouped so
+that "which of these, if any" is a single question). Every one carries a hand-written label with a
+recorded rationale in `report/labels.json`. The labels were written by reading the checked-out
+source *before* any model was run.
+
+**What the corpus actually contains, once labelled:**
+
+| `costs` label | rows | meaning |
+| --- | --- | --- |
+| **junk_drawer** | **3** | date-fns `_lib`, vite `shared`, zod `v3/helpers` — the actionable set |
+| taxonomy | 3 | zod `v4/locales`, date-fns `locale/_lib`, tanstack `ssr/serializer` |
+| **convention** | **91** | 87 date-fns `locale/*/_lib`, 4 one-function-per-directory, 2 vite fixture trees |
+| unclear | 1 | date-fns `_lib/test` |
+
+Of 19 split proposals, **one** is worth doing: rich's `live`/`progress`/`spinner`/`status`/
+`_spinners`/`filesize` cluster. The other eighteen are arbitrary halves.
+
+**The config is the largest single term, and it is not the model's job.** 91 of 98 rows are two
+date-fns conventions. Declaring them — `--freeze 'locale/*/_lib/**'` plus the usual test excludes —
+takes the corpus from **98 rows at 3% precision to 6 rows at 50%**, before any model is involved.
+That is plan.md's escape-hatch principle cashing out: a repo needing fifteen freeze patterns has
+that much convention-governed structure, and *not* declaring it is indistinguishable from the tool
+being wrong.
+
+**Structural equivalence, scored properly.** Positive class is `junk_drawer` throughout, since it is
+the only verdict a linter prints:
+
+| signal | precision | recall | on |
+| --- | --- | --- | --- |
+| out-Jaccard > 0.5 (the rule FINDINGS defined) | **3%** | 100% | all 98 |
+| max(out, in) > 0.5 | **25%** | 100% | all 98 |
+| either, conventions declared | **50%** | 100% | the 7 that survive a freeze |
+
+The out-only rule is also knife-edge: precision runs 33% → 18% → 9% → 3% as the threshold moves
+0.1 → 0.25 → 0.4 → 0.5, so there is no plateau to stand on. Adding the in-neighbourhood fixes both
+problems at once and for one reason: **a fixed per-instance layout looks equivalent from the
+importer's side, not the target's.** date-fns's 87 locale `_lib` directories each hold the same five
+parts pulled in by one `index.ts` — in-Jaccard 1.000, out-Jaccard ~0.4. With `max` the precision
+plateau is flat from 0.4 to 0.9, which is what a real threshold looks like.
+
+**Claude Haiku 4.5 against the same labels.** 19 `costs` rows (all 7 non-convention, plus a
+12-row stride sample of the conventions) and all 19 splits, each answered from the packet alone —
+no repository access, and the equivalence score deliberately withheld from the prompt so the two
+signals stay independent:
+
+| | Haiku 4.5 | equivalence(max) | equivalence(out) |
+| --- | --- | --- | --- |
+| precision on the same 19 rows | **75%** | 43% | 17% |
+| recall | **100%** | 100% | 100% |
+| exact label agreement (4-way) | **89%** (17/19) | 21% | 21% |
+
+Both `costs` misses are benign: it called date-fns `locale/_lib` a `convention` where the label says
+`taxonomy` (both mean *leave it alone*), and called `_lib/test` a junk drawer where the label
+hedged to `unclear`. It correctly identified all three real junk drawers, all 12 sampled
+conventions, and both remaining taxonomies. **It never missed a real finding.**
+
+On splits it agreed with the label **14 of 19** and — the result that matters — independently picked
+rich's cluster and named it `live`, the same word the label had chosen. All five disagreements are
+**over-acceptance**: it accepted cuts the label rejects (`flask` → `core`, `requests` → `api`,
+`vite/module-runner` → `runtime`, `zod/v3` → `errors`, date-fns `locale` → `en`) and never rejected
+one it should have taken. Only one of its proposed names was an unnameable word.
+
+**The `en` case is the sharpest thing in this section.** date-fns's eight `en-*` locales are a
+genuinely nameable group, Haiku named them correctly, and the cut is still wrong:
+`date-fns/locale/en-US` is a published entry point, so grouping them is a breaking API change.
+**Naming-as-validator is necessary and not sufficient** — plan.md has treated it as the quality gate
+since Phase 0, and this is the first evidence of its ceiling. What the naming test *does* catch is
+the other eighteen proposals, all of which resist naming.
+
+**What this settles.** The cheap deterministic signal does **not** reproduce the model's judgement —
+43% against 75% on identical questions — so plan.md's "if the cheap signal reproduces the LLM's
+judgement, ship the cheap one" branch is closed on the second horn. Ship the model; keep
+equivalence as a feature in the packet and as the free pre-filter its 100% recall makes it. The
+adjudication cost is per *finding*, not per commit, and on a ratcheted repo new findings are rare.
+
+**Three caveats, none of which the numbers above hide.**
+
+1. **The labels are the author's.** The questions and the labels were produced by one person reading
+   the same evidence, so agreement partly measures a shared method rather than ground truth. Every
+   label carries a written rationale in `report/labels.json` precisely so a second reader can
+   disagree with a specific row rather than with a percentage.
+2. **The evaluation set is small where it counts.** Three positives. Precision of 75% means three
+   correct out of four calls. That is a direction, not a rate — and it is the main argument for
+   PR 9's corpus expansion.
+3. **The transport was not the shipped one.** `report/adjudicate.py run` shells out to `claude -p`,
+   which needs no API key; in this environment its stored credential had expired, so the recorded
+   run went through Haiku 4.5 subagents instead. Same model, same packets, but wrapped in an agent
+   harness with its own system prompt. The verdicts are checked in at
+   `report/verdicts/claude-haiku-4-5.json` and the run should be repeated through the CLI when a
+   login is available.
+
 ---
 
 ## Bugs and artifacts found by measuring
@@ -451,16 +559,14 @@ root branching move — and it is on by default in both CLIs.
   conventions like meridian2's `@/*` → `./src/*` involve no package name and remain unsolved.
 - **Do symbols matter?** See "Symbol level". The file-level ceiling is already visible: `zsf.ts` and
   `rich/_unicode_data` produce the *identical* file-level signature.
-- **Can a junk drawer be told from a taxonomy? This is the question the tool depends on, and there
-  are now two candidate answers rather than none.** PR 4c's `costs` list is the right *size* for a
-  linter — 1–3 candidates on a normal repo — but mixes real findings (vite's `shared`) with
-  legitimate taxonomies (zod's `v4/locales`). Two signals separate them on the handful of cases we
-  can label by eye, and they agree with each other: **structural equivalence** (children's
-  neighbourhood Jaccard: 1.000 for locale tables, 0.000 for junk drawers) and **naming** (the
-  low-scoring directories are literally named `shared`, `helpers`, `_lib`). Test structural
-  equivalence first — it is free, deterministic, and already computable from the extracted graphs —
-  and keep naming as the confirmation. Needs a labelled evaluation set bigger than 7 directories,
-  which is the main reason to enlarge the corpus.
+- ~~**Can a junk drawer be told from a taxonomy?**~~ **Answered: yes, by a model; no, by the cheap
+  signal alone.** On identical questions Haiku 4.5 scores 75% precision at 100% recall against
+  structural equivalence's 43%, and the out-only rule the earlier draft of this document
+  recommended testing first scores 3% across the full labelled set. See "Can a model adjudicate?".
+  Two follow-ons are open and sharper: whether a *frontier* model beats Haiku by enough to matter
+  (the recorded run only establishes that the cheap one clears the bar), and whether the
+  over-acceptance failure mode on splits can be closed by giving the packet the repository's
+  published entry points — the one thing the `en` false positive needed and did not have.
 - **Adoption posture.** The tool most likely to be used is an advisory metric plus a handful of
   high-confidence moves (the `knip` / `dependency-cruiser` shape), not a formatter. The strongest
   niches are agent-written code (no aesthetic ownership, sprawls badly), greenfield, and monorepo
@@ -499,8 +605,14 @@ root branching move — and it is on by default in both CLIs.
   direction. Worse, the boundaries it *does* have an opinion about include legitimate taxonomies —
   the largest `costs` verdict in the corpus is zod's `v4/locales`, which is correct by the model
   and wrong as advice. Nothing in the numbers distinguishes it from vite's `shared`, which is a
-  real junk drawer. Naming-as-validator is therefore not a later refinement but the component that
-  decides whether the tool's output is usable, and it is entirely unbuilt and untested.
+  real junk drawer. ~~Naming-as-validator is therefore not a later refinement but the component
+  that decides whether the tool's output is usable, and it is entirely unbuilt and untested.~~
+  **Built and tested in PR 7**, and the risk is downgraded rather than closed: a cheap model
+  separates the two at 75% precision, but it does so from the same graph evidence plus its prior
+  about what repositories are called — and the date-fns `en` false positive shows the prior running
+  out exactly where the graph is silent about *published surface*. The remaining risk is that
+  adjudication quality is a property of how well-known the repository is, which a corpus of famous
+  open-source projects cannot detect. meridian2 (PR 6) is the first test of that.
 - ~~**File-level cohesion can't distinguish "junk drawer" from "parallel siblings sharing an
   interface."**~~ **Probably solvable at file level after all** — see structural equivalence under
   "PR 4c — as built". Cohesion asks whether children link to each other; the discriminator asks

@@ -1,0 +1,489 @@
+{
+  "date-fns:costs:_lib": {
+    "label": "junk_drawer",
+    "why": "Twelve mutually unrelated internals under one underscore name: addLeadingZeros, cdnPolyfill, defaultLocale, defaultOptions, format, getRoundingMethod, getTimezoneOffsetInMilliseconds, normalizeDates, normalizeInterval, protectedTokens, test, tp. Seven components, no shared target, and the name is the giveaway."
+  },
+  "date-fns:costs:_lib/test": {
+    "label": "unclear",
+    "why": "Two test-support files (index.ts, tzOffsetTransitions.ts) with nothing in common and nothing much to say either way. Its parent is itself a junk drawer, so dissolving it would make that worse rather than better."
+  },
+  "date-fns:costs:constructFrom": {
+    "label": "convention",
+    "why": "date-fns puts one exported function per directory as `index.ts` plus `test.ts`. 252 sibling directories have the identical two-child shape; the layout is the repo's file-naming convention, not a statement about these two files."
+  },
+  "date-fns:costs:constructNow": {
+    "label": "convention",
+    "why": "date-fns puts one exported function per directory as `index.ts` plus `test.ts`. 252 sibling directories have the identical two-child shape; the layout is the repo's file-naming convention, not a statement about these two files."
+  },
+  "date-fns:costs:isSameWeek": {
+    "label": "convention",
+    "why": "date-fns puts one exported function per directory as `index.ts` plus `test.ts`. 252 sibling directories have the identical two-child shape; the layout is the repo's file-naming convention, not a statement about these two files."
+  },
+  "date-fns:costs:locale/_lib": {
+    "label": "taxonomy",
+    "why": "buildFormatLongFn, buildLocalizeFn, buildMatchFn, buildMatchPatternFn -- the four constructors every locale is assembled from. One idea, four parallel instances."
+  },
+  "date-fns:costs:locale/af/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar-DZ/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar-EG/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar-MA/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar-SA/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar-TN/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ar/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/az/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/be-tarask/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/be/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/bg/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/bn/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/bs/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ca/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ckb/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/cs/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/cy/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/da/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/de/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/el/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/en-CA/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/en-US/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/es/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/et/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/eu/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/fa-IR/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/fi/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/fr-CH/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/fr/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/fy/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/gd/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/gl/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/gu/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/he/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/hi/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/hr/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ht/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/hu/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/hy/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/id/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/is/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/it/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ja-Hira/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ja/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ka/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/kk/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/km/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/kn/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ko/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/lb/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/lt/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/lv/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/mk/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/mn/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ms/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/mt/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/nb/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/nl-BE/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/nl/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/nn/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/oc/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/pl/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/pt-BR/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/pt/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ro/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ru/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/se/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sk/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sl/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sq/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sr-Latn/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sr/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/sv/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ta/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/te/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/th/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/tr/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/ug/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/uk/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/uz-Cyrl/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/uz/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/vi/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/zh-CN/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/zh-HK/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:locale/zh-TW/_lib": {
+    "label": "convention",
+    "why": "Every date-fns locale provides the same fixed set of parts under `_lib` -- formatDistance, formatLong, formatRelative, localize, match. 87 sibling directories have the identical shape, which is what a convention looks like."
+  },
+  "date-fns:costs:toDate": {
+    "label": "convention",
+    "why": "date-fns puts one exported function per directory as `index.ts` plus `test.ts`. 252 sibling directories have the identical two-child shape; the layout is the repo's file-naming convention, not a statement about these two files."
+  },
+  "date-fns:split:": {
+    "choice": null,
+    "name": null,
+    "why": "component-0 moves 251 of 252 children: the whole repo minus one file, which is a no-op wearing a proposal's clothes."
+  },
+  "date-fns:split:fp": {
+    "choice": null,
+    "name": null,
+    "why": "Rank 0 buries 382 of 398 curried wrappers so 16 stay at the top; rank 1 moves 397 of 398. Both are the same non-statement about a flat generated namespace."
+  },
+  "date-fns:split:locale": {
+    "choice": null,
+    "name": null,
+    "why": "Rank 1 is the corpus's most interesting rejection: en-AU/en-CA/en-GB/en-IE/en-IN/en-NZ/en-US/en-ZA is a genuinely nameable group (`en`), and the cut is still wrong -- date-fns/locale/en-US is a published entry point, so grouping them is a breaking API change. Nameable is necessary, not sufficient."
+  },
+  "date-fns:split:parse/_lib": {
+    "choice": null,
+    "name": null,
+    "why": "Separates constants/parsers/utils from Parser/Setter/types, which is close to abstract-versus-concrete and would leave the already-existing parsers/ directory nested one level deeper for no gain."
+  },
+  "date-fns:split:parse/_lib/parsers": {
+    "choice": null,
+    "name": null,
+    "why": "Both candidates are arbitrary halves of 32 sibling parser classes, which are exactly the parallel instances that should stay flat."
+  },
+  "flask:split:": {
+    "choice": null,
+    "name": null,
+    "why": "Both candidates are arbitrary halves of a flat package. app/blueprints/cli/config/helpers/json/signals/testing/wrappers shares no idea; neither does the remainder."
+  },
+  "requests:split:": {
+    "choice": null,
+    "name": null,
+    "why": "Rank 0 splits the package down the middle with no idea on either side; rank 1 evicts __version__ and help, which is a two-file eviction wearing a subdirectory's clothes."
+  },
+  "rich:split:": {
+    "choice": 1,
+    "name": "live",
+    "why": "The one accepted proposal in the corpus. live/progress/spinner/status/_spinners/filesize is a real cluster -- progress imports live, spinner and filesize; status imports live and spinner; spinner imports _spinners -- and `live` names it. Ranks 0 and 2 are arbitrary halves of a 78-file flat package."
+  },
+  "tanstack-router:costs:router-core/src/ssr/serializer": {
+    "label": "taxonomy",
+    "why": "RawStream, ShallowErrorPlugin, seroval-plugins, transformer: one connected component implementing SSR payload serialization. Small and cohesive, not a bag. The bit cost dislikes it only because it is small and externally addressed."
+  },
+  "tanstack-router:split:react-router/src": {
+    "choice": null,
+    "name": null,
+    "why": "Rank 0 moves 20 .tsx files and leaves 15 more behind, so it is not a components/non-components separation; the nearest honest name is `components`, which names a file shape rather than an idea. Rank 1 mixes the use* hooks with route/router/link."
+  },
+  "vite:costs:node/__tests__/fixtures": {
+    "label": "convention",
+    "why": "Test fixtures. Their layout is dictated by what the test harness loads, not by the dependency graph; this subtree should have been --excluded."
+  },
+  "vite:costs:node/__tests__/fixtures/runner-import": {
+    "label": "convention",
+    "why": "Test fixtures. Their layout is dictated by what the test harness loads, not by the dependency graph; this subtree should have been --excluded."
+  },
+  "vite:costs:shared": {
+    "label": "junk_drawer",
+    "why": "Four components in a directory named `shared`, reached from eight different directories. builtin/constants/utils have nothing to do with hmr/ssrTransform; the only cross-child link is three files touching moduleRunnerTransport."
+  },
+  "vite:split:": {
+    "choice": null,
+    "name": null,
+    "why": "module-runner/node/types against client/shared -- five top-level directories are already the repo's structure, and neither half is a concept."
+  },
+  "vite:split:module-runner": {
+    "choice": null,
+    "name": null,
+    "why": "constants/esmEvaluator/hmrHandler/hmrLogger/runner/types against createImportMeta/evaluatedModules/importMetaResolver/index/sourcemap/utils. Mixed on both sides."
+  },
+  "vite:split:node": {
+    "choice": null,
+    "name": null,
+    "why": "The proposal PR 4c built the spectral search to reach, and it does not survive reading: rank 1's group is cli, logger, shortcuts, preview, watch, http, env, publicDir, external, nodeResolve, idResolver, assetSource, deprecations, typeUtils -- a grab bag. Rank 0 is the complement and no better. 373 bits of evidence for a cut with no name."
+  },
+  "vite:split:node/__tests__": {
+    "choice": null,
+    "name": null,
+    "why": "Moves fixtures/ and runnerImport.spec.ts out of a test directory. Test layout is not the graph's business."
+  },
+  "vite:split:shared": {
+    "choice": null,
+    "name": null,
+    "why": "Consistent with the costs verdict on the same directory: the right advice for a junk drawer is dissolve it, not subdivide it. Rank 0 also splits hmr.ts from hmrHandler.ts."
+  },
+  "zod:costs:v3/helpers": {
+    "label": "junk_drawer",
+    "why": "enumUtil, errorUtil, parseUtil, partialUtil, typeAliases, util -- five components, no shared target, and every member is named after being a utility rather than after doing anything."
+  },
+  "zod:costs:v4/locales": {
+    "label": "taxonomy",
+    "why": "52 per-language error-message tables, all 52 importing v4/core/errors.ts and 50 of them core/checks.ts and core/util.ts. Parallel instances of one category; dissolving them into v4/ would be absurd."
+  },
+  "zod:split:": {
+    "choice": null,
+    "name": null,
+    "why": "Moving mini/, v3/ and v4/ into a box beside index.ts and v4-mini/ adds a level without adding a concept."
+  },
+  "zod:split:v3": {
+    "choice": null,
+    "name": null,
+    "why": "Rank 1 nearly finds the error subsystem (ZodError, errors, locales) and then puts benchmarks/ in with it, which is the difference between a module and a cut."
+  },
+  "zod:split:v4": {
+    "choice": null,
+    "name": null,
+    "why": "The corpus's largest split by bits (-652) and a non-finding: rank 0 moves everything except the barrel down one level, which is v4/src/, not a module. Rank 1 pairs classic/ with index.ts for no reason a reader would recognise."
+  },
+  "zod:split:v4/classic": {
+    "choice": null,
+    "name": null,
+    "why": "coerce/compat/errors/external/parse/schemas against checks/from-json-schema/index/iso/tests -- no idea on either side, and 1.8 bits of evidence for it."
+  },
+  "zod:split:v4/mini": {
+    "choice": null,
+    "name": null,
+    "why": "Moves index.ts and tests/ into a box. Neither is a module."
+  }
+}

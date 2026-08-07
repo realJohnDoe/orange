@@ -41,6 +41,7 @@ from extractors.schema import Graph, load
 from model.graph import filter_nodes
 from model.graph import reroot as reroot_graph
 from model.graph import splice_barrels as splice_all_barrels
+from model.equivalence import structural_equivalence
 from model.metrics import DEFAULT_C, all_metrics, edges
 from model.paths import bit_cost, branching, common_prefix_len, cost, dirs
 from model.placement import Container, container_stability, containers, local_optimality
@@ -230,12 +231,24 @@ def write_movers_csv(movers: list[dict[str, Any]], path: Path) -> None:
             writer.writerow(_fmt(m[col]) for col in columns)
 
 
-def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> None:
+def write_containers_csv(
+    census: list[tuple[str, Container]],
+    path: Path,
+    equivalence: dict[str, dict[str, dict[str, Any]]],
+) -> None:
     """Every directory priced for its own existence, worst first.
 
     Ordered by dissolve_bits ascending, so the `costs` verdicts -- the ones no
     value of C rescues, and the only rows that are a finding rather than a
     measurement -- are at the top of the file.
+
+    The two Jaccard columns are the junk-drawer/taxonomy discriminator
+    (model/equivalence.py). They sit here rather than in the pricing because
+    they are not part of the objective: nothing in the bit cost knows or cares
+    whether a directory's children have the same neighbours. They ride along
+    because a reader of the `costs` rows needs them in the same row to make the
+    judgement the cost cannot -- and because PR 7 measured how far they get
+    (not far alone; see FINDINGS.md).
     """
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -253,9 +266,12 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                 "split_candidates",
                 "c_min",
                 "c_max",
+                "out_jaccard",
+                "in_jaccard",
             ]
         )
         for repo, x in sorted(census, key=lambda row: (row[1].c_max, row[0], row[1].dir)):
+            scores = equivalence.get(repo, {}).get(x.dir, {})
             writer.writerow(
                 [
                     repo,
@@ -270,6 +286,8 @@ def write_containers_csv(census: list[tuple[str, Container]], path: Path) -> Non
                     len(x.splits),
                     _fmt(x.c_min),
                     _fmt(x.c_max),
+                    _fmt(scores.get("out_jaccard")),
+                    _fmt(scores.get("in_jaccard")),
                 ]
             )
 
@@ -346,6 +364,7 @@ def main(
     all_worst: list[WorstEdge] = []
     all_movers: list[dict[str, Any]] = []
     all_containers: list[tuple[str, Container]] = []
+    all_equivalence: dict[str, dict[str, dict[str, Any]]] = {}
     for graph in graphs:
         g = filter_nodes(graph, exclude)
         if reroot:
@@ -357,6 +376,7 @@ def main(
         all_worst.extend(worst)
         all_movers.extend(dict(m, repo=g.repo) for m in movers)
         all_containers.extend((g.repo, x) for x in census)
+        all_equivalence[g.repo] = structural_equivalence(g)
         (output / f"{g.repo}.json").write_text(
             json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
         )
@@ -374,7 +394,7 @@ def main(
     write_summary_md(summary_rows, output / "summary.md", c)
     write_worst_edges_csv(all_worst, output / "worst-edges.csv")
     write_movers_csv(all_movers, output / "movers.csv")
-    write_containers_csv(all_containers, output / "containers.csv")
+    write_containers_csv(all_containers, output / "containers.csv", all_equivalence)
     write_splits_csv(all_containers, output / "splits.csv", c)
 
 

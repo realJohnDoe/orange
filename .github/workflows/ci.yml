@@ -16,3 +16,10 @@ jobs:
       - run: uv sync --locked
       - run: uv run ty check
       - run: uv run pytest
+
+      # The linter run against itself, in the configuration PR 7 says is the
+      # usable one: deterministic, offline, no model and no credential. It fails
+      # only when the corpus grows a structure finding that report/baseline.json
+      # has not accepted -- at which point there is something for the
+      # dep-structure-review skill to adjudicate. Ratchet, not threshold.
+      - run: uv run python -m report.adjudicate build --output "${{ runner.temp }}/adjudication" --baseline report/baseline.json
