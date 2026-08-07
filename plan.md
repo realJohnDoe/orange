@@ -30,6 +30,11 @@ Phase 0 tests this with no placement engine, no dominators, and no symbol resolu
 **Status after PR 4c: partly, and the interesting part is where the model has nothing to say.**
 See [FINDINGS.md](FINDINGS.md), "Where the hypothesis stands".
 
+**Status after PR 7: the graph's opinions are usable once something else supplies judgement.** Of
+the 98 directories the objective actively objects to across seven repos, 3 are real findings, 91
+are convention, and a cheap model separates them at 75% precision and 100% recall. See
+[FINDINGS.md](FINDINGS.md), "Can a model adjudicate?".
+
 ---
 
 ## The model
@@ -397,6 +402,11 @@ status quo by a landslide.
 | `model/placement.py` | `move_frontier()`, `local_optimality()`, `sweep()` — single-file local optimality, C-independent by construction. `containers()`, `container_stability()`, `stability_sweep()` — per-directory dissolve/split pricing. `freeze_sets()`. Every delta is checked against a rebuilt graph in `tests/test_placement.py`. |
 | `report/run.py` | Typer CLI, one invocation per variant. `--exclude` and `--freeze` (repeatable globs), `--splice-barrels`, `--reroot`, `--lang`, `--repo` (repeatable), `--output DIR`. Emits `summary.md`, `summary.csv`, per-repo metric JSON, `worst-edges.csv`, `movers.csv`, and `containers.csv` — every directory priced for its own existence, `costs` verdicts first. Flags repos over an unresolved-import threshold rather than averaging them in silently. |
 | `report/calibrate.py` | The C sweep. Emits `calibration.csv` / `calibration.md` with the stability curve, the split-vs-dissolve breakdown, what directories earn before C, and a mechanically-derived verdict. |
+| `model/equivalence.py` | `neighbourhoods()`, `median_jaccard()`, `container_equivalence()`, `structural_equivalence()` — the junk-drawer/taxonomy discriminator, promoted from an ad-hoc script in PR 7. Both directions, since out alone scores 3%. Not part of the objective; joined into `containers.csv` as two columns. |
+| `report/adjudicate.py` | PR 7's pilot. `build` emits `findings.jsonl` plus one self-contained packet per finding; `run` puts them to a model through a `Backend` (`claude -p` by default, no API key); `score` grades both signals against `report/labels.json`. |
+| `report/labels.json` | The labelled evaluation set: a verdict and a written rationale for all 117 questions the corpus produces. Keyed by stable finding id so PR 9 can grow the corpus without invalidating it. |
+| `report/verdicts/` | Recorded adjudication runs, checked in as evidence. `claude-haiku-4-5.json` is PR 7's. |
+| `.claude/skills/dep-structure-review/` | The distribution channel: judgement criteria for the adjudicator, deliberately thin — the packet format and verdict schema live in `report/adjudicate.py`. |
 
 ### Schema, as actually built
 
@@ -441,10 +451,10 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **7** — the adjudication pilot | The tool's usability rests entirely on it and nothing else queued tests it. The candidate set already exists | Opus 5 | not started |
-| 2 | **8** — per-repo configs and a `C` sensitivity table | Turns `C` from a failed calibration into a documented dial, and builds the labelled set PR 7 needs more of | Sonnet 5 | not started, needs 7 |
-| 3 | **9** — corpus expansion, screened on tree shape | More findings to adjudicate, and the direct test of whether flat Python is a size effect or a language effect | Sonnet 5 | not started, needs 8 |
-| — | **6** — meridian2 | Still the point of the exercise, but it is an *application* of the tool and reads as noise until PR 7 says whether the findings are trustworthy | Opus 5, plan mode | deferred until 7 |
+| 1 | **8** — per-repo configs and a `C` sensitivity table | Promoted by PR 7: the freeze config turned out to be a larger term in precision than the adjudicator — declaring two date-fns conventions cuts the finding list from 98 rows to 6 — so it is no longer bookkeeping | Sonnet 5 | not started |
+| 2 | **9** — corpus expansion, screened on tree shape | The labelled set has three positives. Precision of 75% is three correct calls out of four, which is a direction and not a rate | Sonnet 5 | not started, needs 8 |
+| 3 | **6** — meridian2 | Unblocked: PR 7 says the findings are trustworthy enough to act on. It is also the first repo the adjudicator has no prior about, which is now the sharpest open risk | Opus 5, plan mode | not started |
+| — | **7** — the adjudication pilot | — | Opus 5 | **done** |
 | — | **4a** — `model/graph.py` + `model/metrics.py` + `bit_cost` | — | Opus 5 | **done** |
 | — | **4b** — `report/run.py` with `--exclude` | — | Sonnet 5 | **done** |
 | — | **4c** — `--freeze`, local optimality, container verdicts, split search | — | Opus 5 | **done** |
@@ -477,6 +487,62 @@ the LLM's judgement, ship the cheap one and keep the LLM for naming.
 **Acceptance:** a hand-labelled verdict for every `costs` row and every `splits` candidate in the
 corpus, the two signals' agreement with it, and an honest precision/recall. If neither separates
 them, the tool has no usable output and `FINDINGS.md` should say no.
+
+### PR 7 — as built
+
+Shipped as specified, with the acceptance criterion met literally: `report/labels.json` carries a
+labelled verdict and a written rationale for all 117 questions the corpus produces. **The results
+are in [FINDINGS.md](FINDINGS.md), "Can a model adjudicate?".** Three deviations, all forced by what
+the labelling turned up:
+
+**Deviation 1: the label vocabulary needed a third class, and it is the largest one.** `junk_drawer`
+vs `taxonomy` could not express what 91 of the 98 `costs` rows are — directories whose layout is
+dictated by a repo-wide convention (date-fns's per-locale `_lib`, its one-function-per-directory
+rule, vite's test fixtures). Forcing them into `taxonomy` would have been a lie about why they
+should be left alone, and into `junk_drawer` a lie about what the tool should do. `convention` is
+also the actionable one: it names a `--freeze` pattern rather than a refactor, which is why PR 8 is
+now ahead of PR 9 in the queue.
+
+**Deviation 2: the discriminator needed a second neighbourhood.** The out-only rule this document
+recommended testing first scores 3% precision across the labelled set. `model/equivalence.py`
+computes both directions and `report/adjudicate.py` scores both rules, because the difference
+between them is most of the signal's usable precision — a fixed per-instance layout is equivalent
+from the importer's side, not the target's.
+
+**Deviation 3: the adjudicator is behind a `Backend`, and the default needs no API key.** The
+hypothesis under test was that the *cheapest* model suffices, so "cheapest" had to be a flag; and
+requiring a credential to find out would put one in front of an experiment whose answer decides
+whether the credential is ever needed. `run --backend cli` shells out to `claude -p`.
+
+**Also shipped:** `model/equivalence.py` promoted from an ad-hoc script (and its two Jaccard columns
+joined into `containers.csv`), `build --freeze/--exclude` so the config half of the answer is
+measurable, and `.claude/skills/dep-structure-review/` — the distribution channel, discussed below.
+
+### Distribution: a skill, and a deliberately thin one
+
+The tool splits along the line PR 7 measured, and the split is the whole design:
+
+- **The linter is a plain CLI with no model, no API key and no network.** That is the CI half:
+  `report/adjudicate.py build` prices the tree and emits the questions. It is what runs on every
+  commit, and against a ratcheted baseline it emits nothing on most of them.
+- **The adjudicator is a skill.** `.claude/skills/dep-structure-review/SKILL.md` names the commands,
+  the four verdicts and the naming test, and is invoked only when there *are* new findings.
+
+Why a skill rather than the alternatives, in the order they were considered:
+
+- **Not an SDK call inside the linter.** That forces a credential into CI for a step CI almost never
+  needs, and couples the measurement's release cadence to a model id.
+- **Not an MCP server.** There is no live state to hold, no auth to broker and no service to keep
+  running — the adjudication is a one-shot transformation of a file into another file. An MCP server
+  would be a process to operate in exchange for nothing.
+- **Not a subagent definition.** Portability: `SKILL.md` is consumed by Claude Code, the Agent SDK
+  and Managed Agents alike, while a subagent is one harness's concept.
+
+**The contract belongs in the tool, not in the skill.** The packet format and the verdict schema are
+`report/adjudicate.py`'s, which is what lets the same questions go to `claude -p`, to the API, or to
+a human reviewer without the skill being in the loop — and what makes the recorded run in
+`report/verdicts/` reproducible. The skill carries judgement criteria and nothing else, which is
+also why it is short enough to be worth loading.
 
 ### PR 8 — per-repo configs, and `C` as a dial
 
@@ -802,13 +868,18 @@ dependency graph, or you get a junk drawer rather than a module.
 **Hysteresis and the accepted/rejected-move lockfile** (also pins generated names, which otherwise
 drift every run).
 
-**Naming as a validator, not a decoration.** ~~Later phase~~ — **PR 4c promoted this to the
-blocking question; see [FINDINGS.md](FINDINGS.md), "Open questions".** Ask an LLM to name each
-extracted cluster; if the best
-it can do is `utils`, `helpers`, or `misc`, reject the cut and try the next candidate. Unnameable
-means incoherent. This turns the fuzziest step into a quality gate on the thing graph metrics
-cannot evaluate — and it is the only lever available for the "grouping mutually-unrelated things"
-blind spot.
+**Naming as a validator, not a decoration.** ~~Later phase~~ ~~PR 4c promoted this to the blocking
+question~~ — **built and measured in PR 7.** Ask a model to name each extracted cluster; if the best
+it can do is `utils`, `helpers`, or `misc`, reject the cut. Unnameable means incoherent, and that
+half holds: eighteen of the corpus's nineteen split proposals resist naming and all eighteen are
+rejections.
+
+**The converse does not hold, and that is PR 7's sharpest result.** Nameable does not mean correct.
+date-fns's eight `en-*` locales are a clean, obviously nameable group (`en/`), Haiku named them
+correctly, and the cut is still wrong because `date-fns/locale/en-US` is a published entry point.
+The naming test is a *necessary* condition on a cut, not a sufficient one; the missing input is the
+repository's published surface, which the dependency graph does not contain and the packet does not
+yet carry. Adding it is the obvious next experiment.
 
 ---
 

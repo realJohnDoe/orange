@@ -1,0 +1,310 @@
+[
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The 11 children are genuinely unrelated (timezone utilities, formatting, test helpers, polyfills) with only 5 internal edges across 7 disconnected components.",
+    "verdict": "junk_drawer"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:_lib/test",
+    "kind": "costs",
+    "name": null,
+    "reason": "Two completely disconnected files (index.ts and tzOffsetTransitions.ts) with zero internal edges should be dissolved into their parent or test structure.",
+    "verdict": "junk_drawer"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:constructFrom",
+    "kind": "costs",
+    "name": null,
+    "reason": "The layout follows the repo-wide convention of one directory per exported function with index.ts and test.ts.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "All four children are builder utility functions (buildFormatLongFn, buildLocalizeFn, buildMatchFn, buildMatchPatternFn) shared across the 100+ locale implementations following the repo's standard pattern.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/ar-SA/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/bn/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/de/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/fa-IR/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/gu/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/id/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/km/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "The five subdirectories (formatDistance, formatLong, formatRelative, localize, match) are the fixed set every locale must provide following date-fns's established convention.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/mn/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "Standardized locale formatting structure that every locale must provide.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/oc/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "Standardized locale formatting structure that every locale must provide.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/sk/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "Standardized locale formatting structure that every locale must provide.",
+    "verdict": "convention"
+  },
+  {
+    "confidence": "high",
+    "id": "date-fns:costs:locale/te/_lib",
+    "kind": "costs",
+    "name": null,
+    "reason": "Standardized locale formatting structure that every locale must provide.",
+    "verdict": "convention"
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "date-fns:split:",
+    "kind": "split",
+    "name": null,
+    "reason": "The single candidate moves 251 of 252 items with minimal bit savings, which does not carve out a meaningful separate module.",
+    "verdict": "unclear"
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "date-fns:split:fp",
+    "kind": "split",
+    "name": null,
+    "reason": "Rank 0 candidate moves basic time-addition functions, but no recognizable maintainer name exists for this category beyond vague terms like 'arithmetic'.",
+    "verdict": "unclear"
+  },
+  {
+    "choice": 1,
+    "confidence": "high",
+    "id": "date-fns:split:locale",
+    "kind": "split",
+    "name": "en",
+    "reason": "Rank 1 cleanly separates the 8 English locale variants (en-AU, en-GB, en-US, etc.) from all others, forming a natural and recognizable category.",
+    "verdict": "unclear"
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "date-fns:split:parse/_lib",
+    "kind": "split",
+    "name": null,
+    "reason": "Neither candidate carves out a module with a name beyond generic utilities."
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "date-fns:split:parse/_lib/parsers",
+    "kind": "split",
+    "name": null,
+    "reason": "Parser names in each candidate group show no clear semantic boundary to justify the split."
+  },
+  {
+    "choice": 0,
+    "confidence": "high",
+    "id": "flask:split:",
+    "kind": "split",
+    "name": "core",
+    "reason": "Candidate 0 isolates the main application framework code (app, blueprints, cli, config, testing) from lower-level infrastructure utilities."
+  },
+  {
+    "choice": 0,
+    "confidence": "high",
+    "id": "requests:split:",
+    "kind": "split",
+    "name": "api",
+    "reason": "Candidate 0 cleanly separates public API modules (api, models, sessions, exceptions) from internal transport implementation."
+  },
+  {
+    "choice": 1,
+    "confidence": "high",
+    "id": "rich:split:",
+    "kind": "split",
+    "name": "live",
+    "reason": "Candidate 1 groups related progress/live display and animation modules into a coherent feature subsystem."
+  },
+  {
+    "confidence": "high",
+    "id": "tanstack-router:costs:router-core/src/ssr/serializer",
+    "kind": "costs",
+    "name": null,
+    "reason": "The four files (RawStream, ShallowErrorPlugin, seroval-plugins, transformer) all cohesively address SSR serialization and form a well-defined module.",
+    "verdict": "taxonomy"
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "tanstack-router:split:react-router/src",
+    "kind": "split",
+    "name": null,
+    "reason": "Candidate 0 mixes SSR rendering components with other UI elements and utilities without a clear module boundary; candidate 1's core routing logic would need a generic name like 'core'."
+  },
+  {
+    "confidence": "high",
+    "id": "vite:costs:shared",
+    "kind": "costs",
+    "name": null,
+    "reason": "The children (HMR utilities, console forwarding, module transport, SSR transform, constants) are genuinely unrelated utilities serving different subsystems with no coherent organizing principle.",
+    "verdict": "junk_drawer"
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "vite:split:",
+    "kind": "split",
+    "name": null,
+    "reason": "Neither candidate grouping reflects a coherent module maintainer would recognize."
+  },
+  {
+    "choice": 0,
+    "confidence": "high",
+    "id": "vite:split:module-runner",
+    "kind": "split",
+    "name": "runtime",
+    "reason": "Moved files form the runtime execution layer distinct from import metadata infrastructure."
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "vite:split:node",
+    "kind": "split",
+    "name": null,
+    "reason": "The moved items (optimizer/, plugins/, server/, ssr/, build.ts, config.ts, etc.) mix multiple unrelated subsystems that lack a maintainer-recognizable name beyond generic terms like 'core' or 'engine'."
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "vite:split:node/__tests__",
+    "kind": "split",
+    "name": null,
+    "reason": "Moving only fixtures/ and a single test file creates too narrow a split without a clear unifying purpose or maintainer-recognized name."
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "vite:split:shared",
+    "kind": "split",
+    "name": null,
+    "reason": "Both candidates mix HMR, module communication, rendering, and SSR concerns that lack a unifying maintainer-recognizable name beyond generic terms like 'runtime' or 'infrastructure'."
+  },
+  {
+    "confidence": "high",
+    "id": "zod:costs:v3/helpers",
+    "kind": "costs",
+    "name": null,
+    "reason": "The helpers directory contains disconnected utility functions with only 1 internal edge across 5 disconnected components.",
+    "verdict": "junk_drawer"
+  },
+  {
+    "confidence": "high",
+    "id": "zod:costs:v4/locales",
+    "kind": "costs",
+    "name": null,
+    "reason": "The 52 children are parallel instances of one category (language locales), all importing shared targets, which is the defining characteristic of a taxonomy.",
+    "verdict": "taxonomy"
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "zod:split:",
+    "kind": "split",
+    "name": null,
+    "reason": "Candidate 0 groups version variants (v3, v4, mini) which cannot be meaningfully named beyond generic terms like versions or variants."
+  },
+  {
+    "choice": 1,
+    "confidence": "high",
+    "id": "zod:split:v3",
+    "kind": "split",
+    "name": "errors",
+    "reason": "Candidate 1 groups error handling, error definitions, and localization into a coherent diagnostics module."
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "zod:split:v4",
+    "kind": "split",
+    "name": null,
+    "reason": "Candidate 0 groups implementation variants (classic, core, mini) but lacks a recognizable name beyond generic terms like implementations or variants."
+  },
+  {
+    "choice": null,
+    "confidence": "high",
+    "id": "zod:split:v4/classic",
+    "kind": "split",
+    "name": null,
+    "reason": "Both candidates show minimal semantic cohesion and negligible bit improvements, making reorganization unjustified."
+  },
+  {
+    "choice": null,
+    "confidence": "low",
+    "id": "zod:split:v4/mini",
+    "kind": "split",
+    "name": null,
+    "reason": "The candidate moves only index.ts and tests/ away from implementation files, forming no coherent module with a recognizable name.",
+    "verdict": "unclear"
+  }
+]
