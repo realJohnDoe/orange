@@ -88,9 +88,10 @@ pattern rather than repeatedly as a finding.
 
 The single largest term in this tool's usefulness is not the judging, it is the
 config. On the reference corpus 91 of 98 `costs` rows were one of two date-fns
-conventions; declaring them cut the list from 98 rows to 6 and lifted precision
-from 3% to 50% before any model was involved. If you find yourself adjudicating
-dozens of near-identical directories, stop and write a freeze pattern instead.
+conventions; declaring them cut the list from 98 rows to 6, and precision on
+what remained was 50% against 3% on the raw list — before any model was
+involved. If you find yourself adjudicating dozens of near-identical
+directories, stop and write a freeze pattern instead.
 
 ## Do not
 

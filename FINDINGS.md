@@ -450,10 +450,13 @@ Of 19 split proposals, **one** is worth doing: rich's `live`/`progress`/`spinner
 
 **The config is the largest single term, and it is not the model's job.** 91 of 98 rows are two
 date-fns conventions. Declaring them — `--freeze 'locale/*/_lib/**'` plus the usual test excludes —
-takes the corpus from **98 rows at 3% precision to 6 rows at 50%**, before any model is involved.
-That is plan.md's escape-hatch principle cashing out: a repo needing fifteen freeze patterns has
-that much convention-governed structure, and *not* declaring it is indistinguishable from the tool
-being wrong.
+**takes the list from 98 rows to 6**, and **precision on the rows a freeze cannot remove is 50%**
+against 3% on the raw list. (Two exact claims rather than one: the 6 is a config actually run, the
+50% is measured on the 7 labelled non-convention rows, which is the same set plus the `unclear` one
+that the test-exclude happens to also drop.) Either way the gain arrives before any model is
+involved. That is plan.md's escape-hatch principle cashing out: a repo needing fifteen freeze
+patterns has that much convention-governed structure, and *not* declaring it is indistinguishable
+from the tool being wrong.
 
 **Structural equivalence, scored properly.** Positive class is `junk_drawer` throughout, since it is
 the only verdict a linter prints:

@@ -451,7 +451,7 @@ Priority order. Each PR is independently mergeable and leaves CI green.
 
 | # | PR | Why now | Model | Status |
 | --- | --- | --- | --- | --- |
-| 1 | **8** — per-repo configs and a `C` sensitivity table | Promoted by PR 7: the freeze config turned out to be a larger term in precision than the adjudicator (98 rows at 3% → 6 rows at 50%), so it is no longer bookkeeping | Sonnet 5 | not started |
+| 1 | **8** — per-repo configs and a `C` sensitivity table | Promoted by PR 7: the freeze config turned out to be a larger term in precision than the adjudicator — declaring two date-fns conventions cuts the finding list from 98 rows to 6 — so it is no longer bookkeeping | Sonnet 5 | not started |
 | 2 | **9** — corpus expansion, screened on tree shape | The labelled set has three positives. Precision of 75% is three correct calls out of four, which is a direction and not a rate | Sonnet 5 | not started, needs 8 |
 | 3 | **6** — meridian2 | Unblocked: PR 7 says the findings are trustworthy enough to act on. It is also the first repo the adjudicator has no prior about, which is now the sharpest open risk | Opus 5, plan mode | not started |
 | — | **7** — the adjudication pilot | — | Opus 5 | **done** |
